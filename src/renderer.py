@@ -84,7 +84,8 @@ class StravaRenderer:
     def to_image(self, bloom=True, bloom_sigma_tight=4.0, bloom_sigma_wide=16.0,
                  bloom_strength=0.6, glow=True, glow_strength=1.0,
                  vignette=True, vignette_strength=0.5,
-                 grain=True, grain_amount=0.025):
+                 grain=True, grain_amount=0.025,
+                 gamma=0.7):
         """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8."""
         bg = np.array(BG_COLOR, dtype=np.float32)
         max_val = self.canvas.max()
@@ -92,6 +93,8 @@ class StravaRenderer:
             norm = self.canvas.copy()
         else:
             norm = np.log1p(self.canvas) / np.log1p(max_val)
+
+        norm = norm ** gamma  # lift mid-density routes (gamma < 1 brightens)
 
         if bloom:
             tight = gaussian_filter(norm, sigma=bloom_sigma_tight)

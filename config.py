@@ -14,7 +14,7 @@ PRINT_DPI = 300
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.0,  [ 20,  50, 255]),   # rarely-run    → deep blue
+    (0.0,  [ 60,  80, 255]),   # rarely-run    → visible blue (was [20, 50, 255])
     (0.5,  [220,   0, 220]),   # moderate      → saturated magenta
     (0.85, [255,  60, 255]),   # heavy          → electric pink
     (1.0,  [255, 220, 255]),   # peak density   → blown-out white-pink
@@ -38,7 +38,7 @@ OUTPUT_DIR = "output"
 
 # Map tiles
 MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
-MAP_TILE_OPACITY = 0.55   # was 0.35 — dark CARTO tile needs more weight on black bg
+MAP_TILE_OPACITY = 0.70   # was 0.55 — more street grid visible on dark background
 MAP_TILE_CACHE = "data/map_tile.png"
 MAP_FONT_PATH = "data/fonts/Montserrat-Light.ttf"
 MAP_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-Light.ttf"

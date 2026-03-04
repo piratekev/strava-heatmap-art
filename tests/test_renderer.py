@@ -196,6 +196,15 @@ def test_glow_increases_brightness(renderer):
     assert with_glow > without
 
 
+def test_gamma_brightens_mid_density(renderer):
+    """gamma < 1 should produce brighter mid-density pixels than gamma=1 (linear)."""
+    renderer.canvas[200, 200] = 10.0  # mid-density
+    renderer.canvas[300, 300] = 50.0  # high-density anchor
+    without = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False, gamma=1.0).mean()
+    with_gamma = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False, gamma=0.7).mean()
+    assert with_gamma > without
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math
