@@ -125,6 +125,38 @@ def test_token_refresh_updates_access_token():
     mock_post.assert_called_once()
 
 
+def test_fetch_activities_refreshes_token_on_401(tmp_path):
+    """On 401, fetcher refreshes token and retries the request."""
+    client = make_client()
+
+    unauthorized = MagicMock()
+    unauthorized.status_code = 401
+    unauthorized.raise_for_status = MagicMock()
+
+    success = MagicMock(**{
+        "json.return_value": [_mock_activity(1)],
+        "raise_for_status": MagicMock(),
+        "status_code": 200,
+    })
+    empty = MagicMock(**{"json.return_value": [], "raise_for_status": MagicMock()})
+
+    mock_post_resp = MagicMock()
+    mock_post_resp.json.return_value = {
+        "access_token": "new_token",
+        "refresh_token": "new_refresh",
+        "expires_at": 9999999999,
+    }
+    mock_post_resp.raise_for_status = MagicMock()
+
+    with patch("requests.get", side_effect=[unauthorized, success, empty]):
+        with patch("requests.post", return_value=mock_post_resp):
+            with patch("src.fetcher._update_env_tokens"):
+                activities = fetch_activities(client, cache_dir=str(tmp_path))
+
+    assert len(activities) == 1
+    assert client.access_token == "new_token"
+
+
 def test_get_headers_include_bearer_token():
     client = StravaClient(
         client_id="123",

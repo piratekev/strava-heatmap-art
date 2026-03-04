@@ -15,7 +15,7 @@ class StravaClient:
     def _headers(self):
         return {"Authorization": f"Bearer {self.access_token}"}
 
-    def refresh_access_token(self):
+    def refresh_access_token(self, env_file=".env"):
         response = requests.post(
             STRAVA_TOKEN_URL,
             data={
@@ -29,6 +29,7 @@ class StravaClient:
         data = response.json()
         self.access_token = data["access_token"]
         self.refresh_token = data["refresh_token"]
+        _update_env_tokens(env_file, self.access_token, self.refresh_token)
 
     @classmethod
     def from_env(cls):
@@ -42,8 +43,27 @@ class StravaClient:
         )
 
 
+def _update_env_tokens(env_file, access_token, refresh_token):
+    """Write updated tokens back to .env so they persist across runs."""
+    if not os.path.exists(env_file):
+        return
+    with open(env_file) as f:
+        lines = f.readlines()
+    updated = []
+    for line in lines:
+        if line.startswith("STRAVA_ACCESS_TOKEN="):
+            updated.append(f"STRAVA_ACCESS_TOKEN={access_token}\n")
+        elif line.startswith("STRAVA_REFRESH_TOKEN="):
+            updated.append(f"STRAVA_REFRESH_TOKEN={refresh_token}\n")
+        else:
+            updated.append(line)
+    with open(env_file, "w") as f:
+        f.writelines(updated)
+
+
 def _get_with_retry(client, url, params=None, max_retries=3):
-    """GET request with automatic rate-limit retry."""
+    """GET request with automatic rate-limit and token-refresh retry."""
+    token_refreshed = False
     for attempt in range(max_retries):
         response = requests.get(url, headers=client._headers(), params=params or {})
         if response.status_code == 429:
@@ -52,9 +72,14 @@ def _get_with_retry(client, url, params=None, max_retries=3):
             print(f"Rate limited. Sleeping {sleep_secs:.0f}s...")
             time.sleep(sleep_secs)
             continue
+        if response.status_code == 401 and not token_refreshed:
+            print("Access token expired. Refreshing...")
+            client.refresh_access_token()
+            token_refreshed = True
+            continue
         response.raise_for_status()
         return response
-    raise RuntimeError("Max retries exceeded after rate limiting")
+    raise RuntimeError("Max retries exceeded")
 
 
 def fetch_activities(client, cache_dir="data"):
