@@ -10,3 +10,5 @@ __pycache__/
 dist/
 .DS_Store
 .venv/
+data/map_tile.png
+data/map_tile-preview.png
