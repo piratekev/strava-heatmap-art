@@ -142,3 +142,22 @@ def test_load_font_fallback_uses_size(tmp_path):
     h_large = draw.textbbox((0, 0), "X", font=font_large)[3]
     h_small = draw.textbbox((0, 0), "X", font=font_small)[3]
     assert h_large > h_small
+
+
+def test_download_font_sends_user_agent(tmp_path):
+    """_download_font must use a Request with User-Agent to avoid CDN 403."""
+    import urllib.request
+    from unittest.mock import patch, MagicMock
+
+    font_path = str(tmp_path / "fonts" / "test.ttf")
+    mock_response = MagicMock()
+    mock_response.read.return_value = b"fake font data"
+    mock_response.__enter__ = lambda s: s
+    mock_response.__exit__ = MagicMock(return_value=False)
+
+    with patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+        _download_font(font_path, "https://example.com/font.ttf")
+
+    call_arg = mock_urlopen.call_args[0][0]
+    assert isinstance(call_arg, urllib.request.Request)
+    assert "User-agent" in call_arg.headers

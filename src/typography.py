@@ -12,7 +12,10 @@ def _download_font(font_path, url):
     if not os.path.exists(font_path):
         print(f"Downloading font to {font_path}...")
         try:
-            urllib.request.urlretrieve(url, font_path)
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req) as response:
+                with open(font_path, "wb") as f:
+                    f.write(response.read())
         except Exception as e:
             print(f"Font download failed ({e}) — using PIL default font")
 
