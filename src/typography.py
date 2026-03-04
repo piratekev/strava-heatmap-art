@@ -29,9 +29,8 @@ def render_typography(img, sf_runs, font_path,
                       text_color=(255, 255, 255)):
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
-    Font sizes and margins scale automatically with image dimensions.
-    Text is right-aligned in the bottom-right corner, top-to-bottom order:
-    year range (large) → run count → distance (mi) → elevation (ft).
+    All four lines use the same font size, right-aligned in the bottom-right corner.
+    Order top-to-bottom: year range → run count → distance (mi) → elevation (ft ↑).
     Returns the modified image.
     """
     years = sorted({r["start_date"][:4] for r in sf_runs})
@@ -40,37 +39,34 @@ def render_typography(img, sf_runs, font_path,
     total_miles = sum(r["distance"] for r in sf_runs) / METERS_PER_MILE
     total_dist = f"{total_miles:,.0f} mi"
     total_elev_ft = sum(r.get("total_elevation_gain", 0) for r in sf_runs) * 3.28084
-    total_elev = f"{total_elev_ft:,.0f} ft"
+    total_elev = f"{total_elev_ft:,.0f} ft \u2191"
 
     w, h = img.size
-    large_size = max(12, h // 27)    # ~200px at 5400, 20px at 540
-    small_size = max(10, h // 40)    # ~135px at 5400, 13px at 540
+    font_size = max(10, h // 40)     # ~135px at 5400, 13px at 540
     margin = max(10, h // 25)        # ~216px at 5400, 22px at 540
     shadow_offset = max(2, h // 1800)
-    line_gap = max(8, h // 120)      # ~45px at 5400, 8px at 540 (was h//450)
+    line_gap = max(8, h // 120)      # ~45px at 5400, 8px at 540
 
     draw = ImageDraw.Draw(img)
-    font_large = _load_font(font_path, large_size)
-    font_small = _load_font(font_path, small_size)
+    font = _load_font(font_path, font_size)
 
     shadow = (0, 0, 0)
-    # Top-to-bottom order: year range, run count, distance, elevation
     lines = [
-        (year_range, font_large),
-        (total_runs,  font_small),
-        (total_dist,  font_small),
-        (total_elev,  font_small),
+        (year_range, font),
+        (total_runs,  font),
+        (total_dist,  font),
+        (total_elev,  font),
     ]
 
     y = h - margin
-    for text, font in reversed(lines):
-        bbox = draw.textbbox((0, 0), text, font=font)
+    for text, f in reversed(lines):
+        bbox = draw.textbbox((0, 0), text, font=f)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
         x = w - margin - text_w
         y -= text_h
-        draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill=shadow)
-        draw.text((x, y), text, font=font, fill=text_color)
+        draw.text((x + shadow_offset, y + shadow_offset), text, font=f, fill=shadow)
+        draw.text((x, y), text, font=f, fill=text_color)
         y -= line_gap
 
     return img

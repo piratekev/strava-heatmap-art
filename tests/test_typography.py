@@ -91,7 +91,7 @@ def test_render_typography_scales_with_image_size(tmp_path):
         render_typography(large_img, runs, font_path=font_path)
         large_changed = np.count_nonzero(np.array(large_img).sum(axis=2))
 
-    assert large_changed > small_changed * 3
+    assert large_changed > small_changed * 2.5
 
 
 def test_render_typography_shows_elevation(tmp_path):
@@ -105,6 +105,28 @@ def test_render_typography_shows_elevation(tmp_path):
             render_typography(img, _make_runs(n=10), font_path=font_path)
             all_text = " ".join(str(call) for call in mock_text.call_args_list)
             assert "ft" in all_text
+
+
+def test_render_typography_elevation_has_arrow(tmp_path):
+    """Elevation label should include an upward arrow."""
+    font_path = str(tmp_path / "font.ttf")
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        with patch("PIL.ImageDraw.ImageDraw.text") as mock_text:
+            img = Image.new("RGB", (540, 540), color=(10, 15, 30))
+            render_typography(img, _make_runs(n=10), font_path=font_path)
+            all_text = " ".join(str(call) for call in mock_text.call_args_list)
+            assert "↑" in all_text
+
+
+def test_render_typography_uniform_font_size(tmp_path):
+    """All four lines should be rendered with the same font size."""
+    font_path = str(tmp_path / "font.ttf")
+    with patch("src.typography._load_font",
+               side_effect=lambda path, size: ImageFont.load_default(size=size)) as mock_load:
+        img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+        render_typography(img, _make_runs(), font_path=font_path)
+        sizes = [call.args[1] for call in mock_load.call_args_list]
+        assert len(set(sizes)) == 1  # every _load_font call uses the same size
 
 
 def test_load_font_fallback_uses_size(tmp_path):
