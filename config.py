@@ -20,6 +20,11 @@ ROUTE_COLOR_RAMP = [
     (1.0,  [255, 220, 255]),   # peak density   → blown-out white-pink
 ]
 
+# Hot bloom: extra spread on high-density (heavily-run) pixels
+HOT_BLOOM_THRESHOLD  = 0.7   # norm value above which hot bloom activates
+HOT_BLOOM_SIGMA_MULT = 2.5   # multiplier on bloom_sigma_wide for the hot spread
+HOT_BLOOM_STRENGTH   = 1.5   # screen-blend strength of the hot layer
+
 # Background color
 BG_COLOR = [0, 0, 0]  # pure black
 

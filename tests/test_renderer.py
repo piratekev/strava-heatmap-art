@@ -210,6 +210,14 @@ def test_gamma_brightens_mid_density(renderer):
     assert with_gamma > without
 
 
+def test_hot_bloom_brightens_dense_pixels(renderer):
+    """hot_bloom=True should produce a brighter image when high-density pixels exist."""
+    renderer.canvas[150:250, 150:250] = 100.0  # 100x100 block — enough for measurable gaussian spread
+    without = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False, hot_bloom=False).mean()
+    with_hot = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False, hot_bloom=True).mean()
+    assert with_hot > without
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math
