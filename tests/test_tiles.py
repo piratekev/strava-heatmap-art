@@ -28,20 +28,19 @@ def test_fetch_map_tile_returns_rgb_image(tmp_path):
         "lat_min": 37.75, "lat_max": 37.79,
         "lng_min": -122.45, "lng_max": -122.40,
     }
-    # Create a fake 512x512 tile PNG
-    fake_tile = Image.new("RGB", (512, 512), color=(20, 20, 30))
+    fake_tile = Image.new("RGB", (256, 256), color=(20, 20, 30))
     import io
     tile_bytes = io.BytesIO()
     fake_tile.save(tile_bytes, format="PNG")
-    tile_bytes.seek(0)
+    tile_content = tile_bytes.getvalue()
 
     mock_resp = MagicMock()
-    mock_resp.content = tile_bytes.read()
+    mock_resp.content = tile_content
     mock_resp.raise_for_status = MagicMock()
 
     cache_path = str(tmp_path / "tile.png")
     with patch("requests.get", return_value=mock_resp):
-        img = fetch_map_tile(bounds, zoom=13, token="fake", cache_path=cache_path,
+        img = fetch_map_tile(bounds, zoom=13, cache_path=cache_path,
                              target_size=(540, 540))
 
     assert img.mode == "RGB"
@@ -58,7 +57,7 @@ def test_fetch_map_tile_uses_cache(tmp_path):
         img = fetch_map_tile(
             bounds={"lat_min": 37.75, "lat_max": 37.79,
                     "lng_min": -122.45, "lng_max": -122.40},
-            zoom=13, token="fake", cache_path=cache_path, target_size=(540, 540)
+            zoom=13, cache_path=cache_path, target_size=(540, 540)
         )
         mock_get.assert_not_called()
 

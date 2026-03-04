@@ -35,9 +35,9 @@ CACHE_META_FILE = "data/cache_meta.json"
 # Output
 OUTPUT_DIR = "output"
 
-# Mapbox
-MAP_TILE_ZOOM = 13
-MAP_TILE_OPACITY = 0.15
+# Map tiles
+MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
+MAP_TILE_OPACITY = 0.35
 MAP_TILE_CACHE = "data/map_tile.png"
 MAP_FONT_PATH = "data/fonts/Montserrat-Light.ttf"
 MAP_FONT_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Light.ttf"

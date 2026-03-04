@@ -22,7 +22,8 @@ from src.tiles import fetch_map_tile
 from src.typography import render_typography, _download_font
 from config import (
     CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, OUTPUT_DIR,
-    MAP_TILE_ZOOM, MAP_TILE_OPACITY, MAP_TILE_CACHE,
+    MAP_TILE_OPACITY, MAP_TILE_CACHE,
+    MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
 )
 from PIL import Image
@@ -73,31 +74,26 @@ def main():
     )
     img = Image.fromarray(img_array, mode="RGB")
 
-    # Composite Mapbox tile background
+    # Composite map background
     if args.use_map:
-        mapbox_token = os.environ.get("MAPBOX_TOKEN")
-        if mapbox_token:
-            from config import BG_COLOR
-            cache = MAP_TILE_CACHE if not args.preview else MAP_TILE_CACHE.replace(".png", "-preview.png")
-            try:
-                tile = fetch_map_tile(
-                    bounds=renderer.bounds,
-                    zoom=MAP_TILE_ZOOM if not args.preview else MAP_TILE_ZOOM - 2,
-                    token=mapbox_token,
-                    cache_path=cache,
-                    target_size=(w, h),
-                )
-                bg = composite_map_background(tile, (w, h), MAP_TILE_OPACITY, BG_COLOR)
-                # Composite: use bg as base, blend routes on top
-                bg_arr = np.array(bg, dtype=np.float32)
-                route_arr = img_array.astype(np.float32)
-                # Screen blend: preserve route glow, let map show through darks
-                result = 255 - ((255 - bg_arr) * (255 - route_arr) / 255)
-                img = Image.fromarray(np.clip(result, 0, 255).astype(np.uint8), mode="RGB")
-            except Exception as e:
-                print(f"Map tile skipped: {e}")
-        else:
-            print("MAPBOX_TOKEN not set — skipping map background")
+        from config import BG_COLOR, MAP_TILE_URL
+        cache = MAP_TILE_CACHE if not args.preview else MAP_TILE_CACHE.replace(".png", "-preview.png")
+        zoom = 13 if not args.preview else 11
+        try:
+            tile = fetch_map_tile(
+                bounds=renderer.bounds,
+                zoom=zoom,
+                cache_path=cache,
+                target_size=(w, h),
+                url_template=MAP_TILE_URL,
+            )
+            bg = composite_map_background(tile, (w, h), MAP_TILE_OPACITY, BG_COLOR)
+            bg_arr = np.array(bg, dtype=np.float32)
+            route_arr = img_array.astype(np.float32)
+            result = 255 - ((255 - bg_arr) * (255 - route_arr) / 255)
+            img = Image.fromarray(np.clip(result, 0, 255).astype(np.uint8), mode="RGB")
+        except Exception as e:
+            print(f"Map tile skipped: {e}")
 
     # Typography
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)

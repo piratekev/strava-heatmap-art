@@ -5,8 +5,12 @@ from PIL import Image
 import io
 
 
+CARTO_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
+_SUBDOMAINS = ["a", "b", "c", "d"]
+
+
 def lat_lng_to_tile(lat, lng, zoom):
-    """Convert lat/lng to Mapbox tile (x, y) at given zoom."""
+    """Convert lat/lng to tile (x, y) at given zoom (Web Mercator)."""
     n = 2 ** zoom
     x = int((lng + 180) / 360 * n)
     lat_rad = math.radians(lat)
@@ -14,11 +18,21 @@ def lat_lng_to_tile(lat, lng, zoom):
     return x, y
 
 
-def fetch_map_tile(bounds, zoom, token, cache_path, target_size,
-                   style="mapbox/dark-v11", tile_size=512):
+def _lng_to_world_x(lng, zoom, tile_size):
+    return (lng + 180) / 360 * (2 ** zoom) * tile_size
+
+
+def _lat_to_world_y(lat, zoom, tile_size):
+    lat_rad = math.radians(lat)
+    return (1 - math.asinh(math.tan(lat_rad)) / math.pi) / 2 * (2 ** zoom) * tile_size
+
+
+def fetch_map_tile(bounds, zoom, cache_path, target_size,
+                   url_template=CARTO_URL, tile_size=256):
     """
-    Fetch Mapbox tiles covering bounds, stitch, resize to target_size.
-    Caches result to cache_path — subsequent calls return cached image.
+    Fetch tiles covering bounds, stitch, crop to exact bounds, resize to target_size.
+    Uses CARTO dark_nolabels by default (no token required).
+    Caches the cropped result — subsequent calls return cached image.
     """
     if os.path.exists(cache_path):
         img = Image.open(cache_path).convert("RGB")
@@ -31,18 +45,26 @@ def fetch_map_tile(bounds, zoom, token, cache_path, target_size,
     rows = y_max - y_min + 1
     stitched = Image.new("RGB", (cols * tile_size, rows * tile_size))
 
-    base_url = f"https://api.mapbox.com/styles/v1/{style}/tiles/{tile_size}"
+    idx = 0
     for tx in range(x_min, x_max + 1):
         for ty in range(y_min, y_max + 1):
-            url = f"{base_url}/{zoom}/{tx}/{ty}?access_token={token}"
+            s = _SUBDOMAINS[idx % len(_SUBDOMAINS)]
+            idx += 1
+            url = url_template.format(s=s, z=zoom, x=tx, y=ty)
             resp = requests.get(url)
             resp.raise_for_status()
             tile_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-            px = (tx - x_min) * tile_size
-            py = (ty - y_min) * tile_size
-            stitched.paste(tile_img, (px, py))
+            stitched.paste(tile_img, ((tx - x_min) * tile_size, (ty - y_min) * tile_size))
+
+    # Pixel-accurate crop: compute exact sub-pixel position of bounds within stitched image
+    origin_x = x_min * tile_size
+    origin_y = y_min * tile_size
+    left   = _lng_to_world_x(bounds["lng_min"], zoom, tile_size) - origin_x
+    right  = _lng_to_world_x(bounds["lng_max"], zoom, tile_size) - origin_x
+    top    = _lat_to_world_y(bounds["lat_max"], zoom, tile_size) - origin_y
+    bottom = _lat_to_world_y(bounds["lat_min"], zoom, tile_size) - origin_y
+    cropped = stitched.crop((int(left), int(top), int(right), int(bottom)))
 
     os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
-    stitched.save(cache_path)
-
-    return stitched.resize(target_size, Image.LANCZOS)
+    cropped.save(cache_path)
+    return cropped.resize(target_size, Image.LANCZOS)
