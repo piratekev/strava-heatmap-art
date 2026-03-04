@@ -91,3 +91,21 @@ def test_to_image_routes_are_bright(renderer):
     renderer.rasterize_run([(37.72, -122.50), (37.82, -122.35)])
     with_run = renderer.to_image().mean()
     assert with_run > empty
+
+
+def test_bloom_increases_brightness(renderer):
+    """Bloom effect should produce a brighter image than without it."""
+    renderer.rasterize_run([(37.76, -122.47), (37.77, -122.44)])
+    without_bloom = renderer.to_image(bloom=False).mean()
+    with_bloom = renderer.to_image(bloom=True).mean()
+    assert with_bloom > without_bloom
+
+
+def test_bloom_spreads_light_to_adjacent_pixels(renderer):
+    """A single bright pixel should produce non-zero neighbors after bloom."""
+    renderer.canvas[360, 270] = 10.0
+    img = renderer.to_image(bloom=True)
+    # Neighbors should be brighter than background
+    center = int(img[360, 270].mean())
+    neighbor = int(img[358, 270].mean())
+    assert neighbor > 10  # background is ~10
