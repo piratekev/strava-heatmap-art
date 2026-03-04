@@ -53,5 +53,5 @@ OUTPUT_DIR = "output"
 MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 MAP_TILE_OPACITY = 0.70   # was 0.55 — more street grid visible on dark background
 MAP_TILE_CACHE = "data/map_tile.png"
-MAP_FONT_PATH = "data/fonts/Montserrat-Light.ttf"
-MAP_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-Light.ttf"
+MAP_FONT_PATH = "data/fonts/Montserrat-SemiBold.ttf"
+MAP_FONT_URL  = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-SemiBold.ttf"

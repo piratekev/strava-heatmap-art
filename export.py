@@ -81,7 +81,7 @@ def main():
     if args.use_map:
         from config import BG_COLOR, MAP_TILE_URL
         cache = MAP_TILE_CACHE if not args.preview else MAP_TILE_CACHE.replace(".png", "-preview.png")
-        zoom = 13 if not args.preview else 11
+        zoom = 15 if not args.preview else 11
         try:
             tile = fetch_map_tile(
                 bounds=renderer.bounds,
