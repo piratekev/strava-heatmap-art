@@ -50,6 +50,11 @@ def test_full_resolution_canvas():
     assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)  # (5400, 5400)
 
 
+def test_canvas_is_not_square():
+    """Default canvas should be portrait (width < height) to match SF bounds aspect ratio."""
+    assert CANVAS_WIDTH_PX < CANVAS_HEIGHT_PX
+
+
 def test_rasterize_run_draws_nonzero_pixels(renderer):
     """Drawing a run across the canvas produces non-zero pixels."""
     coords = [

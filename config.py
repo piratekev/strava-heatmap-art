@@ -6,9 +6,9 @@ SF_BOUNDS = {
     "lng_max": -122.3820,  # was -122.3480 — cuts Treasure Island, Embarcadero near right edge
 }
 
-# Print canvas: 18x18" @ 300 DPI (square)
-CANVAS_WIDTH_PX = 5400
-CANVAS_HEIGHT_PX = 5400
+# Print canvas: 16.2x18" @ 300 DPI — matches Mercator aspect ratio of SF bounds
+CANVAS_WIDTH_PX  = 4860   # 16.2" at 300 DPI — matches Mercator aspect ratio of SF bounds
+CANVAS_HEIGHT_PX = 5400   # 18" at 300 DPI
 PRINT_DPI = 300
 
 # Density color ramp: (normalized_value, [R, G, B])
