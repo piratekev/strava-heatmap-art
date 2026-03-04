@@ -16,10 +16,10 @@ PRINT_DPI = 300
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.0,  [ 60,  80, 255]),   # rarely-run    → visible blue (was [20, 50, 255])
-    (0.5,  [220,   0, 220]),   # moderate      → saturated magenta
-    (0.85, [255,  60, 255]),   # heavy          → electric pink
-    (1.0,  [255, 220, 255]),   # peak density   → blown-out white-pink
+    (0.0,  [100,  80, 255]),   # rarely-run → royal indigo-blue
+    (0.45, [200,   0, 255]),   # moderate   → electric violet
+    (0.8,  [255,   0, 180]),   # heavy      → neon hot pink
+    (1.0,  [255, 220, 255]),   # peak       → blown-out pink-white (kept at 220 so g > 200 test passes)
 ]
 
 # Hot bloom: extra spread on high-density (heavily-run) pixels
