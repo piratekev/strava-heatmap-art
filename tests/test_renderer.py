@@ -1,0 +1,43 @@
+import numpy as np
+import pytest
+from src.renderer import StravaRenderer
+from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
+
+
+@pytest.fixture
+def renderer():
+    return StravaRenderer(width=540, height=720)  # 1/10 scale for tests
+
+
+def test_project_sf_center_to_canvas_center(renderer):
+    """SF centroid should project near the canvas center."""
+    center_lat = (SF_BOUNDS["lat_min"] + SF_BOUNDS["lat_max"]) / 2
+    center_lng = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
+    x, y = renderer.project(center_lat, center_lng)
+    assert abs(x - 270) < 30  # within 30px of center (540/2)
+    assert abs(y - 360) < 30  # within 30px of center (720/2)
+
+
+def test_project_top_left_corner(renderer):
+    """SW corner of SF bounds → near bottom-left of canvas (lat inverted)."""
+    x, y = renderer.project(SF_BOUNDS["lat_min"], SF_BOUNDS["lng_min"])
+    assert x < 100
+    assert y > 620  # near bottom (lat_min = south = high y)
+
+
+def test_project_top_right_corner(renderer):
+    """NE corner → near top-right."""
+    x, y = renderer.project(SF_BOUNDS["lat_max"], SF_BOUNDS["lng_max"])
+    assert x > 440
+    assert y < 100
+
+
+def test_canvas_initialized_to_zero(renderer):
+    assert renderer.canvas.shape == (720, 540)
+    assert renderer.canvas.dtype == np.float32
+    assert renderer.canvas.max() == 0.0
+
+
+def test_full_resolution_canvas():
+    r = StravaRenderer()
+    assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)
