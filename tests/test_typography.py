@@ -160,4 +160,6 @@ def test_download_font_sends_user_agent(tmp_path):
 
     call_arg = mock_urlopen.call_args[0][0]
     assert isinstance(call_arg, urllib.request.Request)
+    # urllib.request.Request normalises header keys to title-case first char only,
+    # so "User-Agent" is stored internally as "User-agent"
     assert "User-agent" in call_arg.headers
