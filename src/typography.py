@@ -7,11 +7,14 @@ METERS_PER_MILE = 1609.344
 
 
 def _download_font(font_path, url):
-    """Download font TTF to font_path if not already cached."""
+    """Download font TTF to font_path if not already cached. Silently skips on failure."""
     os.makedirs(os.path.dirname(font_path), exist_ok=True)
     if not os.path.exists(font_path):
         print(f"Downloading font to {font_path}...")
-        urllib.request.urlretrieve(url, font_path)
+        try:
+            urllib.request.urlretrieve(url, font_path)
+        except Exception as e:
+            print(f"Font download failed ({e}) — using PIL default font")
 
 
 def _load_font(font_path, size):
