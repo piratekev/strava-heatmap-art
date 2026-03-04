@@ -47,6 +47,7 @@ def main():
     parser.add_argument("--no-grain", dest="grain", action="store_false", default=True)
     parser.add_argument("--no-glow", dest="glow", action="store_false", default=True)
     parser.add_argument("--no-hot-bloom", dest="hot_bloom", action="store_false", default=True)
+    parser.add_argument("--no-density-expand", dest="density_expand", action="store_false", default=True)
     parser.add_argument("--no-map", dest="use_map", action="store_false", default=True)
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
@@ -72,7 +73,7 @@ def main():
 
     img_array = renderer.to_image(
         bloom=args.bloom, vignette=args.vignette, grain=args.grain,
-        glow=args.glow, hot_bloom=args.hot_bloom
+        glow=args.glow, hot_bloom=args.hot_bloom, density_expand=args.density_expand
     )
     img = Image.fromarray(img_array, mode="RGB")
 

@@ -4,7 +4,8 @@ import cv2
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 from config import (SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR,
-                    HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH)
+                    HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
+                    ROUTE_LINE_THICKNESS, DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH, DENSITY_EXPAND_POWER)
 
 
 def _ramp_colors(norm, ramp):
@@ -66,7 +67,7 @@ class StravaRenderer:
         buf = np.zeros((self.height, self.width), dtype=np.float32)
         for i in range(len(points) - 1):
             cv2.line(buf, points[i], points[i + 1],
-                     color=weight, thickness=2, lineType=cv2.LINE_AA)
+                     color=weight, thickness=ROUTE_LINE_THICKNESS, lineType=cv2.LINE_AA)
         self.canvas += buf
 
     def rasterize_all(self, runs, weight=1.0):
@@ -86,7 +87,7 @@ class StravaRenderer:
                  bloom_strength=0.6, glow=True, glow_strength=1.0,
                  vignette=True, vignette_strength=0.5,
                  grain=True, grain_amount=0.025,
-                 gamma=0.7, hot_bloom=True):
+                 gamma=0.7, hot_bloom=True, density_expand=True):
         """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8."""
         bg = np.array(BG_COLOR, dtype=np.float32)
         max_val = self.canvas.max()
@@ -96,6 +97,10 @@ class StravaRenderer:
             norm = np.log1p(self.canvas) / np.log1p(max_val)
 
         norm = norm ** gamma  # lift mid-density routes (gamma < 1 brightens)
+
+        if density_expand:
+            expanded = gaussian_filter(norm ** DENSITY_EXPAND_POWER, sigma=DENSITY_EXPAND_SIGMA)
+            norm = 1 - (1 - norm) * (1 - expanded * DENSITY_EXPAND_STRENGTH)
 
         if bloom:
             tight = gaussian_filter(norm, sigma=bloom_sigma_tight)

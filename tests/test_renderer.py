@@ -218,6 +218,16 @@ def test_hot_bloom_brightens_dense_pixels(renderer):
     assert with_hot > without
 
 
+def test_density_expand_brightens_dense_routes(renderer):
+    """density_expand=True should produce a brighter image on dense pixel regions."""
+    renderer.canvas[150:250, 150:250] = 50.0  # 100x100 dense block
+    without = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False,
+                                hot_bloom=False, density_expand=False).mean()
+    with_expand = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False,
+                                    hot_bloom=False, density_expand=True).mean()
+    assert with_expand > without
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math

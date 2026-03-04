@@ -27,6 +27,12 @@ HOT_BLOOM_THRESHOLD  = 0.7   # norm value above which hot bloom activates
 HOT_BLOOM_SIGMA_MULT = 2.5   # multiplier on bloom_sigma_wide for the hot spread
 HOT_BLOOM_STRENGTH   = 1.5   # screen-blend strength of the hot layer
 
+# Density expand: tight line-thickening pass proportional to route density
+ROUTE_LINE_THICKNESS    = 3     # base cv2.line thickness (was hard-coded 2)
+DENSITY_EXPAND_SIGMA    = 3.0   # tight gaussian — thickens lines, not halos
+DENSITY_EXPAND_STRENGTH = 1.4   # screen-blend intensity
+DENSITY_EXPAND_POWER    = 2.0   # norm exponent — focuses effect on dense routes (0.9²=0.81, 0.3²=0.09)
+
 # Background color
 BG_COLOR = [0, 0, 0]  # pure black
 
