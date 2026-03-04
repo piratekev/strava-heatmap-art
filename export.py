@@ -66,7 +66,6 @@ def main():
     h = int(CANVAS_HEIGHT_PX * scale)
 
     renderer = StravaRenderer(width=w, height=h)
-    renderer.set_bounds(runs, padding=0.05)
     renderer.rasterize_all(runs)
 
     img_array = renderer.to_image(
