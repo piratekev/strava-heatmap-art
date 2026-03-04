@@ -172,6 +172,15 @@ def test_color_ramp_high_density_is_pink(renderer):
     assert int(r) > 150
 
 
+def test_color_ramp_peak_density_is_near_white(renderer):
+    """Peak density pixels should blow out toward near-white (all channels > 200)."""
+    renderer.canvas[100, 100] = 1.0    # low anchor
+    renderer.canvas[200, 200] = 50.0   # peak density
+    img = renderer.to_image(bloom=False, vignette=False, grain=False)
+    r, g, b = img[200, 200]
+    assert int(r) > 200 and int(g) > 200 and int(b) > 200
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math
