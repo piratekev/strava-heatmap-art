@@ -32,6 +32,13 @@ def test_project_top_right_corner(renderer):
     assert y < 100
 
 
+def test_sf_bounds_excludes_treasure_island():
+    """Treasure Island coords should fall outside the right canvas edge."""
+    r = StravaRenderer(width=540, height=540)
+    x, _ = r.project(37.825, -122.370)  # Treasure Island centroid
+    assert x > 540
+
+
 def test_canvas_initialized_to_zero(renderer):
     assert renderer.canvas.shape == (540, 540)
     assert renderer.canvas.dtype == np.float32

@@ -1,9 +1,9 @@
 # San Francisco bounding box
 SF_BOUNDS = {
     "lat_min": 37.6999,
-    "lat_max": 37.8324,
+    "lat_max": 37.8120,   # was 37.8324 — cuts off Marin, top near Golden Gate Bridge
     "lng_min": -122.5270,
-    "lng_max": -122.3480,
+    "lng_max": -122.3820,  # was -122.3480 — cuts Treasure Island, Embarcadero near right edge
 }
 
 # Print canvas: 18x18" @ 300 DPI (square)
