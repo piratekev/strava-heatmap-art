@@ -14,13 +14,13 @@ PRINT_DPI = 300
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.0, [255, 200,  80]),   # low density  → warm gold
-    (0.5, [255, 240, 180]),   # mid density  → white-gold
-    (1.0, [200, 230, 255]),   # high density → blue-white
+    (0.0, [ 30,  80, 255]),   # low density  → blue
+    (0.5, [150,  50, 200]),   # mid density  → purple
+    (1.0, [255,  80, 180]),   # high density → pink
 ]
 
 # Background color
-BG_COLOR = [10, 15, 30]
+BG_COLOR = [0, 0, 0]  # pure black
 
 # Strava API
 STRAVA_BASE_URL = "https://www.strava.com/api/v3"
