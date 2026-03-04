@@ -6,6 +6,20 @@ from scipy.ndimage import gaussian_filter
 from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR
 
 
+def _ramp_colors(norm, ramp):
+    """Vectorized color ramp: for each pixel in norm [0,1], return interpolated RGB."""
+    result = np.zeros((*norm.shape, 3), dtype=np.float32)
+    for i in range(len(ramp) - 1):
+        t0, c0 = ramp[i]
+        t1, c1 = ramp[i + 1]
+        in_seg = (norm >= t0) & (norm <= t1) if i == len(ramp) - 2 else (norm >= t0) & (norm < t1)
+        alpha = np.where(in_seg, (norm - t0) / (t1 - t0), 0.0)
+        for c in range(3):
+            route_c = c0[c] * (1 - alpha) + c1[c] * alpha
+            result[:, :, c] += np.where(in_seg, route_c, 0.0)
+    return result
+
+
 class StravaRenderer:
     def __init__(self, width=CANVAS_WIDTH_PX, height=CANVAS_HEIGHT_PX):
         self.width = width
@@ -44,7 +58,7 @@ class StravaRenderer:
         buf = np.zeros((self.height, self.width), dtype=np.float32)
         for i in range(len(points) - 1):
             cv2.line(buf, points[i], points[i + 1],
-                     color=weight, thickness=1, lineType=cv2.LINE_AA)
+                     color=weight, thickness=2, lineType=cv2.LINE_AA)
         self.canvas += buf
 
     def rasterize_all(self, runs, weight=1.0):
@@ -60,12 +74,11 @@ class StravaRenderer:
         mask = 1 - strength * np.clip(dist, 0, 1)
         return mask.astype(np.float32)
 
-    def to_image(self, bloom=True, bloom_sigma=8.0, bloom_strength=0.6,
-                 vignette=True, vignette_strength=0.5,
+    def to_image(self, bloom=True, bloom_sigma_tight=4.0, bloom_sigma_wide=16.0,
+                 bloom_strength=0.6, vignette=True, vignette_strength=0.5,
                  grain=True, grain_amount=0.025):
-        """Normalize density canvas and apply luminosity colormap. Returns HxWx3 uint8 array."""
+        """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8."""
         bg = np.array(BG_COLOR, dtype=np.float32)
-        route_color = np.array([255, 240, 180], dtype=np.float32)
         max_val = self.canvas.max()
         if max_val == 0:
             norm = self.canvas.copy()
@@ -73,12 +86,15 @@ class StravaRenderer:
             norm = np.log1p(self.canvas) / np.log1p(max_val)
 
         if bloom:
-            blurred = gaussian_filter(norm, sigma=bloom_sigma)
-            norm = 1 - (1 - norm) * (1 - blurred * bloom_strength)
+            tight = gaussian_filter(norm, sigma=bloom_sigma_tight)
+            wide = gaussian_filter(norm, sigma=bloom_sigma_wide)
+            bloom_layer = tight * 0.4 + wide * 0.6
+            norm = 1 - (1 - norm) * (1 - bloom_layer * bloom_strength)
 
+        route_colors = _ramp_colors(norm, ROUTE_COLOR_RAMP)
         rgb = np.zeros((self.height, self.width, 3), dtype=np.float32)
         for c in range(3):
-            rgb[:, :, c] = bg[c] * (1 - norm) + route_color[c] * norm
+            rgb[:, :, c] = bg[c] * (1 - norm) + route_colors[:, :, c] * norm
 
         if vignette:
             mask = self._make_vignette(strength=vignette_strength)

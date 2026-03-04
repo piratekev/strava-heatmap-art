@@ -152,3 +152,24 @@ def test_set_bounds_defaults_to_sf_bounds():
     x, y = r.project(center_lat, center_lng)
     assert abs(x - 270) < 30
     assert abs(y - 270) < 30
+
+
+def test_color_ramp_low_density_is_gold(renderer):
+    """Low-density pixels (small value relative to max) should appear gold (R >= B)."""
+    # Create both low and high density so log1p normalization spreads the range
+    renderer.canvas[100, 100] = 1.0    # low density
+    renderer.canvas[200, 200] = 50.0   # high density anchor — pulls max up
+    img = renderer.to_image(bloom=False, vignette=False, grain=False)
+    r, g, b = img[100, 100]
+    # At low norm (~0.18), ramp gives warm gold: R > B
+    assert int(r) >= int(b)
+
+
+def test_color_ramp_high_density_shifts_toward_blue(renderer):
+    """High-density pixels (at max) should shift color toward blue-white (B significant)."""
+    renderer.canvas[100, 100] = 1.0    # low density anchor
+    renderer.canvas[200, 200] = 50.0   # high density
+    img = renderer.to_image(bloom=False, vignette=False, grain=False)
+    r, g, b = img[200, 200]
+    # At norm=1.0, ramp gives blue-white [200, 230, 255]: B should be significant
+    assert int(b) > 150
