@@ -1,5 +1,8 @@
+import os
 import numpy as np
 import cv2
+from PIL import Image
+from scipy.ndimage import gaussian_filter
 from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
 
 
@@ -38,3 +41,47 @@ class StravaRenderer:
         """Rasterize all runs onto the canvas."""
         for run in runs:
             self.rasterize_run(run["coords"], weight=weight)
+
+    def _make_vignette(self, strength=0.5):
+        """Radial gradient mask: 1.0 at center, (1-strength) at corners."""
+        cx, cy = self.width / 2, self.height / 2
+        y_idx, x_idx = np.ogrid[:self.height, :self.width]
+        dist = np.sqrt(((x_idx - cx) / cx) ** 2 + ((y_idx - cy) / cy) ** 2)
+        mask = 1 - strength * np.clip(dist, 0, 1)
+        return mask.astype(np.float32)
+
+    def to_image(self, bloom=True, bloom_sigma=8.0, bloom_strength=0.6,
+                 vignette=True, vignette_strength=0.5,
+                 grain=True, grain_amount=0.025):
+        """Normalize density canvas and apply luminosity colormap. Returns HxWx3 uint8 array."""
+        max_val = self.canvas.max()
+        if max_val == 0:
+            norm = self.canvas.copy()
+        else:
+            norm = np.log1p(self.canvas) / np.log1p(max_val)
+
+        if bloom:
+            blurred = gaussian_filter(norm, sigma=bloom_sigma)
+            norm = 1 - (1 - norm) * (1 - blurred * bloom_strength)
+
+        rgb = np.zeros((self.height, self.width, 3), dtype=np.float32)
+        for c in range(3):
+            rgb[:, :, c] = self.BG_COLOR[c] * (1 - norm) + self.ROUTE_COLOR[c] * norm
+
+        if vignette:
+            mask = self._make_vignette(strength=vignette_strength)
+            rgb *= mask[:, :, np.newaxis]
+
+        if grain:
+            noise = np.random.normal(0, grain_amount * 255, rgb.shape).astype(np.float32)
+            rgb += noise
+
+        return np.clip(rgb, 0, 255).astype(np.uint8)
+
+    def save(self, path, dpi=300, **kwargs):
+        """Save the rendered image as a PNG at the given DPI."""
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        img_array = self.to_image(**kwargs)
+        img = Image.fromarray(img_array, mode="RGB")
+        img.save(path, dpi=(dpi, dpi))
+        print(f"Saved: {path}")

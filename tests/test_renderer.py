@@ -70,3 +70,24 @@ def test_rasterize_all_runs(renderer):
     ]
     renderer.rasterize_all(runs)
     assert renderer.canvas.max() > 0
+
+
+def test_to_image_returns_rgb_array(renderer):
+    renderer.rasterize_run([(37.76, -122.47), (37.77, -122.44)])
+    img = renderer.to_image()
+    assert img.shape == (720, 540, 3)
+    assert img.dtype == np.uint8
+
+
+def test_to_image_background_is_dark(renderer):
+    """Empty canvas should produce a near-black image."""
+    img = renderer.to_image()
+    assert img.mean() < 20
+
+
+def test_to_image_routes_are_bright(renderer):
+    """Canvas with a run should produce brighter pixels than empty canvas."""
+    empty = renderer.to_image().mean()
+    renderer.rasterize_run([(37.72, -122.50), (37.82, -122.35)])
+    with_run = renderer.to_image().mean()
+    assert with_run > empty
