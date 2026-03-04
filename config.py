@@ -2,8 +2,8 @@
 SF_BOUNDS = {
     "lat_min": 37.7080,   # SF south city line (Geneva Ave / Daly City border)
     "lat_max": 37.8330,   # just north of GG Bridge road
-    "lng_min": -122.5270, # unchanged
-    "lng_max": -122.3820, # unchanged
+    "lng_min": -122.5204, # shifted +0.0066° east (225px at 4960px canvas width)
+    "lng_max": -122.3754, # shifted +0.0066° east
 }
 
 # Print canvas: 16.53x18" @ 300 DPI
@@ -16,7 +16,7 @@ PRINT_DPI = 300
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.0,  [100,  80, 255]),   # rarely-run → royal indigo-blue
+    (0.0,  [150, 100, 255]),   # rarely-run → brighter indigo (more luminous, same hue)
     (0.45, [200,   0, 255]),   # moderate   → electric violet
     (0.8,  [255,   0, 180]),   # heavy      → neon hot pink
     (1.0,  [255, 220, 255]),   # peak       → blown-out pink-white (kept at 220 so g > 200 test passes)
@@ -28,7 +28,7 @@ HOT_BLOOM_SIGMA_MULT = 2.5   # multiplier on bloom_sigma_wide for the hot spread
 HOT_BLOOM_STRENGTH   = 1.5   # screen-blend strength of the hot layer
 
 # Density expand: tight line-thickening pass proportional to route density
-ROUTE_LINE_THICKNESS    = 3     # base cv2.line thickness (was hard-coded 2)
+ROUTE_LINE_THICKNESS    = 4     # base cv2.line thickness (was 3)
 DENSITY_EXPAND_SIGMA    = 3.0   # tight gaussian — thickens lines, not halos
 DENSITY_EXPAND_STRENGTH = 1.4   # screen-blend intensity
 DENSITY_EXPAND_POWER    = 2.0   # norm exponent — focuses effect on dense routes (0.9²=0.81, 0.3²=0.09)
