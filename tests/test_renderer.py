@@ -41,3 +41,32 @@ def test_canvas_initialized_to_zero(renderer):
 def test_full_resolution_canvas():
     r = StravaRenderer()
     assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)
+
+
+def test_rasterize_run_draws_nonzero_pixels(renderer):
+    """Drawing a run across the canvas produces non-zero pixels."""
+    coords = [
+        (37.76, -122.47),
+        (37.77, -122.44),
+        (37.78, -122.42),
+    ]
+    renderer.rasterize_run(coords)
+    assert renderer.canvas.max() > 0
+
+
+def test_rasterize_two_runs_doubles_density_on_overlap(renderer):
+    """Same route drawn twice doubles the density values."""
+    coords = [(37.76, -122.47), (37.78, -122.42)]
+    renderer.rasterize_run(coords)
+    first_max = renderer.canvas.max()
+    renderer.rasterize_run(coords)
+    assert renderer.canvas.max() == pytest.approx(first_max * 2)
+
+
+def test_rasterize_all_runs(renderer):
+    runs = [
+        {"coords": [(37.76, -122.47), (37.77, -122.44)]},
+        {"coords": [(37.75, -122.46), (37.78, -122.42)]},
+    ]
+    renderer.rasterize_all(runs)
+    assert renderer.canvas.max() > 0
