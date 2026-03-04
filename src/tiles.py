@@ -1,3 +1,4 @@
+import hashlib
 import math
 import os
 import requests
@@ -32,10 +33,15 @@ def fetch_map_tile(bounds, zoom, cache_path, target_size,
     """
     Fetch tiles covering bounds, stitch, crop to exact bounds, resize to target_size.
     Uses CARTO dark_nolabels by default (no token required).
-    Caches the cropped result — subsequent calls return cached image.
+    cache_path is used as a prefix; a 6-char bounds hash is embedded in the filename
+    so that different bounds never share a cached tile.
     """
-    if os.path.exists(cache_path):
-        img = Image.open(cache_path).convert("RGB")
+    bounds_key = hashlib.md5(repr(sorted(bounds.items())).encode()).hexdigest()[:6]
+    root, ext = os.path.splitext(cache_path)
+    actual_cache = f"{root}-{bounds_key}{ext}"
+
+    if os.path.exists(actual_cache):
+        img = Image.open(actual_cache).convert("RGB")
         return img.resize(target_size, Image.LANCZOS)
 
     x_min, y_max = lat_lng_to_tile(bounds["lat_min"], bounds["lng_min"], zoom)
@@ -56,7 +62,6 @@ def fetch_map_tile(bounds, zoom, cache_path, target_size,
             tile_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
             stitched.paste(tile_img, ((tx - x_min) * tile_size, (ty - y_min) * tile_size))
 
-    # Pixel-accurate crop: compute exact sub-pixel position of bounds within stitched image
     origin_x = x_min * tile_size
     origin_y = y_min * tile_size
     left   = _lng_to_world_x(bounds["lng_min"], zoom, tile_size) - origin_x
@@ -65,6 +70,6 @@ def fetch_map_tile(bounds, zoom, cache_path, target_size,
     bottom = _lat_to_world_y(bounds["lat_min"], zoom, tile_size) - origin_y
     cropped = stitched.crop((int(left), int(top), int(right), int(bottom)))
 
-    os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
-    cropped.save(cache_path)
+    os.makedirs(os.path.dirname(actual_cache) or ".", exist_ok=True)
+    cropped.save(actual_cache)
     return cropped.resize(target_size, Image.LANCZOS)

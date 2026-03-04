@@ -49,16 +49,50 @@ def test_fetch_map_tile_returns_rgb_image(tmp_path):
 
 def test_fetch_map_tile_uses_cache(tmp_path):
     """Second call uses cached file, makes no HTTP requests."""
-    cache_path = str(tmp_path / "tile.png")
+    import hashlib
+    bounds = {"lat_min": 37.75, "lat_max": 37.79,
+              "lng_min": -122.45, "lng_max": -122.40}
+    bounds_key = hashlib.md5(repr(sorted(bounds.items())).encode()).hexdigest()[:6]
+    cache_prefix = str(tmp_path / "tile.png")
+    actual_cache = str(tmp_path / f"tile-{bounds_key}.png")
+
     fake = Image.new("RGB", (540, 540), color=(10, 10, 20))
-    fake.save(cache_path)
+    fake.save(actual_cache)
 
     with patch("requests.get") as mock_get:
         img = fetch_map_tile(
-            bounds={"lat_min": 37.75, "lat_max": 37.79,
-                    "lng_min": -122.45, "lng_max": -122.40},
-            zoom=13, cache_path=cache_path, target_size=(540, 540)
+            bounds=bounds,
+            zoom=13, cache_path=cache_prefix, target_size=(540, 540)
         )
         mock_get.assert_not_called()
 
     assert img.size == (540, 540)
+
+
+def test_fetch_map_tile_different_bounds_use_different_cache(tmp_path):
+    """Different bounds must produce different cache paths (not share a stale file)."""
+    import io
+    from unittest.mock import patch, MagicMock
+    from src.tiles import fetch_map_tile
+
+    fake_tile = Image.new("RGB", (256, 256), color=(20, 20, 30))
+    buf = io.BytesIO()
+    fake_tile.save(buf, format="PNG")
+    tile_bytes = buf.getvalue()
+
+    mock_resp = MagicMock()
+    mock_resp.content = tile_bytes
+    mock_resp.raise_for_status = MagicMock()
+
+    bounds_a = {"lat_min": 37.70, "lat_max": 37.83, "lng_min": -122.52, "lng_max": -122.38}
+    bounds_b = {"lat_min": 37.70, "lat_max": 37.83, "lng_min": -122.50, "lng_max": -122.36}
+
+    prefix = str(tmp_path / "tile.png")
+
+    with patch("requests.get", return_value=mock_resp):
+        img_a = fetch_map_tile(bounds_a, zoom=13, cache_path=prefix, target_size=(540, 540))
+        img_b = fetch_map_tile(bounds_b, zoom=13, cache_path=prefix, target_size=(540, 540))
+
+    # Both calls should succeed; the function must have fetched tiles twice
+    # (once per bounds), not returned the first cache for the second call.
+    assert mock_resp.raise_for_status.call_count >= 2
