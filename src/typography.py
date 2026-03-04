@@ -22,7 +22,7 @@ def _load_font(font_path, size):
     try:
         return ImageFont.truetype(font_path, size)
     except (OSError, IOError):
-        return ImageFont.load_default()
+        return ImageFont.load_default(size=size)
 
 
 def render_typography(img, sf_runs, font_path,

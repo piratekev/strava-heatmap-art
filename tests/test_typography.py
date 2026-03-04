@@ -91,3 +91,18 @@ def test_render_typography_scales_with_image_size(tmp_path):
         large_changed = np.count_nonzero(np.array(large_img).sum(axis=2))
 
     assert large_changed > small_changed * 3
+
+
+def test_load_font_fallback_uses_size(tmp_path):
+    """Font fallback should scale with requested size, not return tiny bitmap."""
+    from src.typography import _load_font
+    from PIL import Image, ImageDraw
+    draw = ImageDraw.Draw(Image.new("RGB", (300, 300)))
+    nonexistent = str(tmp_path / "nope.ttf")
+
+    font_large = _load_font(nonexistent, size=40)
+    font_small = _load_font(nonexistent, size=10)
+
+    h_large = draw.textbbox((0, 0), "X", font=font_large)[3]
+    h_small = draw.textbbox((0, 0), "X", font=font_small)[3]
+    assert h_large > h_small
