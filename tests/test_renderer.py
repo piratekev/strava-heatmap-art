@@ -181,6 +181,14 @@ def test_color_ramp_peak_density_is_near_white(renderer):
     assert int(r) > 200 and int(g) > 200 and int(b) > 200
 
 
+def test_glow_increases_brightness(renderer):
+    """Glow pass should produce a brighter image than without it."""
+    renderer.rasterize_run([(37.76, -122.47), (37.77, -122.44)])
+    without = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False).mean()
+    with_glow = renderer.to_image(bloom=False, vignette=False, grain=False, glow=True).mean()
+    assert with_glow > without
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math

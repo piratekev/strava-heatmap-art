@@ -82,7 +82,8 @@ class StravaRenderer:
         return mask.astype(np.float32)
 
     def to_image(self, bloom=True, bloom_sigma_tight=4.0, bloom_sigma_wide=16.0,
-                 bloom_strength=0.6, vignette=True, vignette_strength=0.5,
+                 bloom_strength=0.6, glow=True, glow_strength=1.0,
+                 vignette=True, vignette_strength=0.5,
                  grain=True, grain_amount=0.025):
         """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8."""
         bg = np.array(BG_COLOR, dtype=np.float32)
@@ -102,6 +103,12 @@ class StravaRenderer:
         rgb = np.zeros((self.height, self.width, 3), dtype=np.float32)
         for c in range(3):
             rgb[:, :, c] = bg[c] * (1 - norm) + route_colors[:, :, c] * norm
+
+        if glow:
+            sigma = self.height / 40.0
+            for c in range(3):
+                glow_ch = gaussian_filter(rgb[:, :, c], sigma=sigma)
+                rgb[:, :, c] = 255 - (255 - rgb[:, :, c]) * (255 - glow_ch * glow_strength) / 255
 
         if vignette:
             mask = self._make_vignette(strength=vignette_strength)
