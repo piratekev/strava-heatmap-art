@@ -74,3 +74,20 @@ def test_render_typography_year_range_from_sf_runs(tmp_path):
             all_text = " ".join(str(call) for call in mock_text.call_args_list)
             assert "2021" in all_text
             assert "2024" in all_text
+
+
+def test_render_typography_scales_with_image_size(tmp_path):
+    """Larger images should produce larger text (more changed pixels)."""
+    font_path = str(tmp_path / "font.ttf")
+    runs = _make_runs(n=5)
+
+    with patch("src.typography._load_font", side_effect=lambda path, size: ImageFont.load_default(size=size)):
+        small_img = Image.new("RGB", (200, 200), color=(0, 0, 0))
+        render_typography(small_img, runs, font_path=font_path)
+        small_changed = np.count_nonzero(np.array(small_img).sum(axis=2))
+
+        large_img = Image.new("RGB", (800, 800), color=(0, 0, 0))
+        render_typography(large_img, runs, font_path=font_path)
+        large_changed = np.count_nonzero(np.array(large_img).sum(axis=2))
+
+    assert large_changed > small_changed * 3
