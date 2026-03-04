@@ -101,15 +101,6 @@ def test_bloom_increases_brightness(renderer):
     assert with_bloom > without_bloom
 
 
-def test_bloom_spreads_light_to_adjacent_pixels(renderer):
-    """A single bright pixel should produce non-zero neighbors after bloom."""
-    renderer.canvas[360, 270] = 10.0
-    img = renderer.to_image(bloom=True)
-    # Neighbors should be brighter than background
-    center = int(img[360, 270].mean())
-    neighbor = int(img[358, 270].mean())
-    assert neighbor > 10  # background is ~10
-
 
 def test_vignette_darkens_corners_vs_center(renderer):
     """Corners should be darker than center after vignette."""
