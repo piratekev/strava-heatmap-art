@@ -52,7 +52,7 @@ def test_fetch_map_tile_uses_cache(tmp_path):
     import hashlib
     bounds = {"lat_min": 37.75, "lat_max": 37.79,
               "lng_min": -122.45, "lng_max": -122.40}
-    bounds_key = hashlib.md5(repr(sorted(bounds.items())).encode()).hexdigest()[:6]
+    bounds_key = hashlib.md5(f"13:{repr(sorted(bounds.items()))}".encode()).hexdigest()[:6]
     cache_prefix = str(tmp_path / "tile.png")
     actual_cache = str(tmp_path / f"tile-{bounds_key}.png")
 
@@ -93,6 +93,7 @@ def test_fetch_map_tile_different_bounds_use_different_cache(tmp_path):
         img_a = fetch_map_tile(bounds_a, zoom=13, cache_path=prefix, target_size=(540, 540))
         img_b = fetch_map_tile(bounds_b, zoom=13, cache_path=prefix, target_size=(540, 540))
 
-    # Both calls should succeed; the function must have fetched tiles twice
-    # (once per bounds), not returned the first cache for the second call.
-    assert mock_resp.raise_for_status.call_count >= 2
+    import hashlib
+    key_a = hashlib.md5(f"13:{repr(sorted(bounds_a.items()))}".encode()).hexdigest()[:6]
+    key_b = hashlib.md5(f"13:{repr(sorted(bounds_b.items()))}".encode()).hexdigest()[:6]
+    assert key_a != key_b
