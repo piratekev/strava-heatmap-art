@@ -170,3 +170,18 @@ def test_color_ramp_high_density_is_pink(renderer):
     img = renderer.to_image(bloom=False, vignette=False, grain=False)
     r, g, b = img[200, 200]
     assert int(r) > 150
+
+
+def test_project_uses_mercator_y():
+    """Mercator midpoint (not geographic midpoint) should map to canvas center."""
+    import math
+    r = StravaRenderer(width=540, height=540)
+    # Compute the Mercator midpoint of SF bounds
+    merc_min = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_min"])))
+    merc_max = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_max"])))
+    merc_mid = (merc_min + merc_max) / 2
+    # Back-convert Mercator midpoint to lat
+    lat_mercator_center = math.degrees(math.atan(math.sinh(merc_mid)))
+    lng_center = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
+    x, y = r.project(lat_mercator_center, lng_center)
+    assert abs(y - 270) < 2  # should be very close to canvas center

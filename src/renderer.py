@@ -43,11 +43,18 @@ class StravaRenderer:
         }
 
     def project(self, lat, lng):
-        """Map (lat, lng) to (x, y) pixel coordinates using current bounds."""
+        """Map (lat, lng) to (x, y) pixel using Web Mercator Y projection."""
+        lat_rad = np.radians(lat)
+        merc_y = np.arcsinh(np.tan(lat_rad))
+
+        lat_min_rad = np.radians(self.bounds["lat_min"])
+        lat_max_rad = np.radians(self.bounds["lat_max"])
+        merc_min = np.arcsinh(np.tan(lat_min_rad))
+        merc_max = np.arcsinh(np.tan(lat_max_rad))
+
         x = int((lng - self.bounds["lng_min"]) /
                 (self.bounds["lng_max"] - self.bounds["lng_min"]) * (self.width - 1))
-        y = int((self.bounds["lat_max"] - lat) /
-                (self.bounds["lat_max"] - self.bounds["lat_min"]) * (self.height - 1))
+        y = int((merc_max - merc_y) / (merc_max - merc_min) * (self.height - 1))
         return x, y
 
     def rasterize_run(self, coords, weight=1.0):
