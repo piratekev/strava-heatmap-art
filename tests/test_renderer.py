@@ -6,7 +6,7 @@ from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
 
 @pytest.fixture
 def renderer():
-    return StravaRenderer(width=540, height=720)  # 1/10 scale for tests
+    return StravaRenderer(width=540, height=540)  # 1/10 scale for tests
 
 
 def test_project_sf_center_to_canvas_center(renderer):
@@ -15,14 +15,14 @@ def test_project_sf_center_to_canvas_center(renderer):
     center_lng = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
     x, y = renderer.project(center_lat, center_lng)
     assert abs(x - 270) < 30  # within 30px of center (540/2)
-    assert abs(y - 360) < 30  # within 30px of center (720/2)
+    assert abs(y - 270) < 30  # within 30px of center (540/2)
 
 
 def test_project_top_left_corner(renderer):
     """SW corner of SF bounds → near bottom-left of canvas (lat inverted)."""
     x, y = renderer.project(SF_BOUNDS["lat_min"], SF_BOUNDS["lng_min"])
     assert x < 100
-    assert y > 620  # near bottom (lat_min = south = high y)
+    assert y > 490  # near bottom of 540px canvas
 
 
 def test_project_top_right_corner(renderer):
@@ -33,14 +33,14 @@ def test_project_top_right_corner(renderer):
 
 
 def test_canvas_initialized_to_zero(renderer):
-    assert renderer.canvas.shape == (720, 540)
+    assert renderer.canvas.shape == (540, 540)
     assert renderer.canvas.dtype == np.float32
     assert renderer.canvas.max() == 0.0
 
 
 def test_full_resolution_canvas():
     r = StravaRenderer()
-    assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)
+    assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)  # (5400, 5400)
 
 
 def test_rasterize_run_draws_nonzero_pixels(renderer):
@@ -75,7 +75,7 @@ def test_rasterize_all_runs(renderer):
 def test_to_image_returns_rgb_array(renderer):
     renderer.rasterize_run([(37.76, -122.47), (37.77, -122.44)])
     img = renderer.to_image()
-    assert img.shape == (720, 540, 3)
+    assert img.shape == (540, 540, 3)
     assert img.dtype == np.uint8
 
 
@@ -106,7 +106,7 @@ def test_vignette_darkens_corners_vs_center(renderer):
     """Corners should be darker than center after vignette."""
     renderer.canvas[:] = 5.0
     img = renderer.to_image(bloom=False, vignette=True, grain=False)
-    center = int(img[360, 270].mean())
+    center = int(img[270, 270].mean())
     corner = int(img[10, 10].mean())
     assert corner < center
 
