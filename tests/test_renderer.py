@@ -117,3 +117,38 @@ def test_grain_adds_pixel_variance(renderer):
     without = renderer.to_image(bloom=False, vignette=False, grain=False).std()
     with_grain = renderer.to_image(bloom=False, vignette=False, grain=True, grain_amount=0.5).std()
     assert with_grain > without
+
+
+def test_set_bounds_updates_projection():
+    """After set_bounds(), project() maps run extent to canvas edges."""
+    r = StravaRenderer(width=540, height=540)
+    runs = [{"coords": [(37.70, -122.50), (37.80, -122.40)]}]
+    r.set_bounds(runs, padding=0.0)
+    # SW corner should project near bottom-left
+    x, y = r.project(37.70, -122.50)
+    assert x < 10
+    assert y > 530
+    # NE corner should project near top-right
+    x, y = r.project(37.80, -122.40)
+    assert x > 530
+    assert y < 10
+
+
+def test_set_bounds_adds_padding():
+    """Padding pushes route extents inward from canvas edges."""
+    r = StravaRenderer(width=540, height=540)
+    runs = [{"coords": [(37.70, -122.50), (37.80, -122.40)]}]
+    r.set_bounds(runs, padding=0.1)
+    x, y = r.project(37.70, -122.50)
+    assert x > 20   # inset from left edge due to padding
+    assert y < 520  # inset from bottom edge due to padding
+
+
+def test_set_bounds_defaults_to_sf_bounds():
+    """Renderer without set_bounds() uses SF_BOUNDS (existing behaviour)."""
+    r = StravaRenderer(width=540, height=540)
+    center_lat = (SF_BOUNDS["lat_min"] + SF_BOUNDS["lat_max"]) / 2
+    center_lng = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
+    x, y = r.project(center_lat, center_lng)
+    assert abs(x - 270) < 30
+    assert abs(y - 270) < 30

@@ -3,27 +3,37 @@ import numpy as np
 import cv2
 from PIL import Image
 from scipy.ndimage import gaussian_filter
-from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
+from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR
 
 
 class StravaRenderer:
-    # Background color: near-black navy
-    BG_COLOR = np.array([10, 15, 30], dtype=np.float32)
-    # Route color: warm gold/white
-    ROUTE_COLOR = np.array([255, 240, 180], dtype=np.float32)
-
     def __init__(self, width=CANVAS_WIDTH_PX, height=CANVAS_HEIGHT_PX):
         self.width = width
         self.height = height
         self.canvas = np.zeros((height, width), dtype=np.float32)
+        self.bounds = SF_BOUNDS.copy()  # default; overridden by set_bounds()
+
+    def set_bounds(self, runs, padding=0.05):
+        """Compute lat/lng extent from run coords and store with padding."""
+        all_lats = [lat for run in runs for lat, lng in run["coords"]]
+        all_lngs = [lng for run in runs for lat, lng in run["coords"]]
+        lat_min, lat_max = min(all_lats), max(all_lats)
+        lng_min, lng_max = min(all_lngs), max(all_lngs)
+        lat_pad = (lat_max - lat_min) * padding
+        lng_pad = (lng_max - lng_min) * padding
+        self.bounds = {
+            "lat_min": lat_min - lat_pad,
+            "lat_max": lat_max + lat_pad,
+            "lng_min": lng_min - lng_pad,
+            "lng_max": lng_max + lng_pad,
+        }
 
     def project(self, lat, lng):
-        """Map (lat, lng) to (x, y) pixel coordinates."""
-        x = int((lng - SF_BOUNDS["lng_min"]) /
-                (SF_BOUNDS["lng_max"] - SF_BOUNDS["lng_min"]) * (self.width - 1))
-        # Latitude is inverted: higher lat = lower y
-        y = int((SF_BOUNDS["lat_max"] - lat) /
-                (SF_BOUNDS["lat_max"] - SF_BOUNDS["lat_min"]) * (self.height - 1))
+        """Map (lat, lng) to (x, y) pixel coordinates using current bounds."""
+        x = int((lng - self.bounds["lng_min"]) /
+                (self.bounds["lng_max"] - self.bounds["lng_min"]) * (self.width - 1))
+        y = int((self.bounds["lat_max"] - lat) /
+                (self.bounds["lat_max"] - self.bounds["lat_min"]) * (self.height - 1))
         return x, y
 
     def rasterize_run(self, coords, weight=1.0):
@@ -54,6 +64,8 @@ class StravaRenderer:
                  vignette=True, vignette_strength=0.5,
                  grain=True, grain_amount=0.025):
         """Normalize density canvas and apply luminosity colormap. Returns HxWx3 uint8 array."""
+        bg = np.array(BG_COLOR, dtype=np.float32)
+        route_color = np.array([255, 240, 180], dtype=np.float32)
         max_val = self.canvas.max()
         if max_val == 0:
             norm = self.canvas.copy()
@@ -66,7 +78,7 @@ class StravaRenderer:
 
         rgb = np.zeros((self.height, self.width, 3), dtype=np.float32)
         for c in range(3):
-            rgb[:, :, c] = self.BG_COLOR[c] * (1 - norm) + self.ROUTE_COLOR[c] * norm
+            rgb[:, :, c] = bg[c] * (1 - norm) + route_color[c] * norm
 
         if vignette:
             mask = self._make_vignette(strength=vignette_strength)
