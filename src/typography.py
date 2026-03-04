@@ -26,11 +26,12 @@ def _load_font(font_path, size):
 
 
 def render_typography(img, sf_runs, font_path,
-                      text_color=(255, 240, 180)):
+                      text_color=(255, 255, 255)):
     """
-    Render year range, run count, and distance onto img (PIL Image).
+    Render year range, run count, distance, and elevation onto img (PIL Image).
     Font sizes and margins scale automatically with image dimensions.
-    Text is right-aligned in the bottom-right corner.
+    Text is right-aligned in the bottom-right corner, top-to-bottom order:
+    year range (large) → run count → distance (mi) → elevation (ft).
     Returns the modified image.
     """
     years = sorted({r["start_date"][:4] for r in sf_runs})
@@ -38,22 +39,27 @@ def render_typography(img, sf_runs, font_path,
     total_runs = f"{len(sf_runs):,} runs"
     total_miles = sum(r["distance"] for r in sf_runs) / METERS_PER_MILE
     total_dist = f"{total_miles:,.0f} mi"
+    total_elev_ft = sum(r.get("total_elevation_gain", 0) for r in sf_runs) * 3.28084
+    total_elev = f"{total_elev_ft:,.0f} ft"
 
     w, h = img.size
     large_size = max(12, h // 27)    # ~200px at 5400, 20px at 540
     small_size = max(10, h // 40)    # ~135px at 5400, 13px at 540
     margin = max(10, h // 25)        # ~216px at 5400, 22px at 540
     shadow_offset = max(2, h // 1800)
+    line_gap = max(8, h // 120)      # ~45px at 5400, 8px at 540 (was h//450)
 
     draw = ImageDraw.Draw(img)
     font_large = _load_font(font_path, large_size)
     font_small = _load_font(font_path, small_size)
 
     shadow = (0, 0, 0)
+    # Top-to-bottom order: year range, run count, distance, elevation
     lines = [
         (year_range, font_large),
-        (total_runs, font_small),
-        (total_dist, font_small),
+        (total_runs,  font_small),
+        (total_dist,  font_small),
+        (total_elev,  font_small),
     ]
 
     y = h - margin
@@ -65,6 +71,6 @@ def render_typography(img, sf_runs, font_path,
         y -= text_h
         draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill=shadow)
         draw.text((x, y), text, font=font, fill=text_color)
-        y -= max(4, h // 450)  # line gap scales too
+        y -= line_gap
 
     return img

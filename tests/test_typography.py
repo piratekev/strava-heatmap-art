@@ -12,7 +12,8 @@ def _make_runs(n=10, year_start=2021, year_end=2024):
         year = year_start + (i % (year_end - year_start + 1))
         runs.append({
             "start_date": f"{year}-06-15T08:00:00Z",
-            "distance": 10000.0,  # 10km = ~6.2 miles each
+            "distance": 10000.0,       # 10 km = ~6.2 mi each
+            "total_elevation_gain": 100.0,  # 100 m = ~328 ft each
         })
     return runs
 
@@ -91,6 +92,19 @@ def test_render_typography_scales_with_image_size(tmp_path):
         large_changed = np.count_nonzero(np.array(large_img).sum(axis=2))
 
     assert large_changed > small_changed * 3
+
+
+def test_render_typography_shows_elevation(tmp_path):
+    """Elevation total should appear in footer as feet."""
+    font_path = str(tmp_path / "font.ttf")
+    # 10 runs × 100 m = 1000 m = 3281 ft
+
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        with patch("PIL.ImageDraw.ImageDraw.text") as mock_text:
+            img = Image.new("RGB", (540, 540), color=(10, 15, 30))
+            render_typography(img, _make_runs(n=10), font_path=font_path)
+            all_text = " ".join(str(call) for call in mock_text.call_args_list)
+            assert "ft" in all_text
 
 
 def test_load_font_fallback_uses_size(tmp_path):
