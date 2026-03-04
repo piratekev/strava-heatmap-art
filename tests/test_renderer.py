@@ -109,3 +109,20 @@ def test_bloom_spreads_light_to_adjacent_pixels(renderer):
     center = int(img[360, 270].mean())
     neighbor = int(img[358, 270].mean())
     assert neighbor > 10  # background is ~10
+
+
+def test_vignette_darkens_corners_vs_center(renderer):
+    """Corners should be darker than center after vignette."""
+    renderer.canvas[:] = 5.0
+    img = renderer.to_image(bloom=False, vignette=True, grain=False)
+    center = int(img[360, 270].mean())
+    corner = int(img[10, 10].mean())
+    assert corner < center
+
+
+def test_grain_adds_pixel_variance(renderer):
+    """Film grain should increase variance of a flat region."""
+    # Use empty canvas so base image is near-uniform; use large grain_amount for clear signal
+    without = renderer.to_image(bloom=False, vignette=False, grain=False).std()
+    with_grain = renderer.to_image(bloom=False, vignette=False, grain=True, grain_amount=0.5).std()
+    assert with_grain > without
