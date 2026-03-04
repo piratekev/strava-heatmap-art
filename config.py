@@ -1,13 +1,15 @@
 # San Francisco bounding box
 SF_BOUNDS = {
-    "lat_min": 37.6999,
-    "lat_max": 37.8120,   # was 37.8324 — cuts off Marin, top near Golden Gate Bridge
-    "lng_min": -122.5270,
-    "lng_max": -122.3820,  # was -122.3480 — cuts Treasure Island, Embarcadero near right edge
+    "lat_min": 37.7080,   # SF south city line (Geneva Ave / Daly City border)
+    "lat_max": 37.8330,   # just north of GG Bridge road
+    "lng_min": -122.5270, # unchanged
+    "lng_max": -122.3820, # unchanged
 }
 
-# Print canvas: 16.2x18" @ 300 DPI — matches Mercator aspect ratio of SF bounds
-CANVAS_WIDTH_PX  = 4860   # 16.2" at 300 DPI — matches Mercator aspect ratio of SF bounds
+# Print canvas: 16.53x18" @ 300 DPI
+# aspect = lng_range_rad / merc_range = 0.002531 / (lat_range_rad / cos(lat_mid))
+#        = 0.002531 / (0.002182 / 0.7919) = 0.002531 / 0.002756 ≈ 0.919
+CANVAS_WIDTH_PX  = 4960   # 16.53" at 300 DPI — matches Mercator aspect ratio of new SF bounds
 CANVAS_HEIGHT_PX = 5400   # 18" at 300 DPI
 PRINT_DPI = 300
 
