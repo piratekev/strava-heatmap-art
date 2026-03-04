@@ -6,8 +6,8 @@ Usage:
     python export.py                 # full 300 DPI render
     python export.py --preview       # 1/10 scale for quick iteration
     python export.py --fetch         # fetch new activities first
-    python export.py --no-map        # skip Mapbox background tile
-    python export.py --no-bloom --no-grain
+    python export.py --no-map        # skip map background tile
+    python export.py --no-bloom --no-grain --no-glow
 """
 import argparse
 import json
@@ -45,6 +45,7 @@ def main():
     parser.add_argument("--no-bloom", dest="bloom", action="store_false", default=True)
     parser.add_argument("--no-vignette", dest="vignette", action="store_false", default=True)
     parser.add_argument("--no-grain", dest="grain", action="store_false", default=True)
+    parser.add_argument("--no-glow", dest="glow", action="store_false", default=True)
     parser.add_argument("--no-map", dest="use_map", action="store_false", default=True)
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
@@ -69,7 +70,7 @@ def main():
     renderer.rasterize_all(runs)
 
     img_array = renderer.to_image(
-        bloom=args.bloom, vignette=args.vignette, grain=args.grain
+        bloom=args.bloom, vignette=args.vignette, grain=args.grain, glow=args.glow
     )
     img = Image.fromarray(img_array, mode="RGB")
 
