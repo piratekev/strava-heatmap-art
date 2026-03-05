@@ -5,7 +5,8 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter
 from config import (SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR,
                     HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
-                    ROUTE_LINE_THICKNESS, DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH,
+                    ROUTE_LINE_THICKNESS, ROUTE_LINE_THICKNESS_50_BONUS, ROUTE_LINE_THICKNESS_10_BONUS,
+                    DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH,
                     DENSITY_EXPAND_POWER, GAMMA)
 
 
@@ -60,7 +61,7 @@ class StravaRenderer:
         y = int((merc_max - merc_y) / (merc_max - merc_min) * (self.height - 1))
         return x, y
 
-    def rasterize_run(self, coords, weight=1.0):
+    def rasterize_run(self, coords, weight=1.0, thickness=ROUTE_LINE_THICKNESS):
         """Draw anti-aliased route onto the density canvas."""
         if len(coords) < 2:
             return
@@ -68,13 +69,54 @@ class StravaRenderer:
         buf = np.zeros((self.height, self.width), dtype=np.float32)
         for i in range(len(points) - 1):
             cv2.line(buf, points[i], points[i + 1],
-                     color=weight, thickness=ROUTE_LINE_THICKNESS, lineType=cv2.LINE_AA)
+                     color=weight, thickness=thickness, lineType=cv2.LINE_AA)
         self.canvas += buf
 
+    def _density_score(self, coords):
+        """Mean canvas value sampled along this route's projected path.
+
+        Called after pass-1 rasterization so the canvas reflects all routes.
+        Higher score = route passes through heavily-run corridors.
+        """
+        if len(coords) < 2:
+            return 0.0
+        values = []
+        for lat, lng in coords:
+            x, y = self.project(lat, lng)
+            x_c = max(0, min(x, self.width - 1))
+            y_c = max(0, min(y, self.height - 1))
+            values.append(float(self.canvas[y_c, x_c]))
+        return float(np.mean(values)) if values else 0.0
+
     def rasterize_all(self, runs, weight=1.0):
-        """Rasterize all runs onto the canvas."""
+        """Rasterize all runs with a two-pass density-proportional thickness.
+
+        Pass 1: draw every run at base ROUTE_LINE_THICKNESS.
+        Pass 2: score each run by mean canvas density along its path, then
+                re-draw top-50% routes at base+50-bonus and top-10% at base+10-bonus.
+        Only the highest bonus fires per run (they don't stack).
+        """
+        # Pass 1 — build the density canvas
         for run in runs:
             self.rasterize_run(run["coords"], weight=weight)
+
+        if len(runs) < 2:
+            return
+
+        # Score and rank
+        scores = [self._density_score(run["coords"]) for run in runs]
+        sorted_scores = sorted(scores)
+        p50 = sorted_scores[int(len(runs) * 0.50)]
+        p90 = sorted_scores[int(len(runs) * 0.90)]
+
+        # Pass 2 — re-draw hot routes thicker
+        for run, score in zip(runs, scores):
+            if score >= p90:
+                self.rasterize_run(run["coords"], weight=weight,
+                                   thickness=ROUTE_LINE_THICKNESS + ROUTE_LINE_THICKNESS_10_BONUS)
+            elif score >= p50:
+                self.rasterize_run(run["coords"], weight=weight,
+                                   thickness=ROUTE_LINE_THICKNESS + ROUTE_LINE_THICKNESS_50_BONUS)
 
     def _make_vignette(self, strength=0.5):
         """Radial gradient mask: 1.0 at center, (1-strength) at corners."""

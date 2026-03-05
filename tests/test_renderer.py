@@ -237,6 +237,26 @@ def test_hot_bloom_does_not_spread_to_medium_density(renderer):
     assert medium_delta < 3  # medium region should not glow from hot bloom
 
 
+def test_rasterize_all_second_pass_thickens_hot_routes():
+    """Two-pass rasterize_all should add extra density to hot corridors vs single-pass."""
+    hot  = [(37.76, -122.47), (37.77, -122.44)]
+    cold = [(37.73, -122.50), (37.72, -122.49)]
+
+    runs = [{"coords": hot}] * 10 + [{"coords": cold}]
+
+    # Two-pass (rasterize_all)
+    r_two = StravaRenderer(width=540, height=540)
+    r_two.rasterize_all(runs)
+
+    # Single-pass (bare rasterize_run loop, no bonus)
+    r_one = StravaRenderer(width=540, height=540)
+    for run in runs:
+        r_one.rasterize_run(run["coords"])
+
+    # Hot corridor should be denser after two-pass because top routes get extra thickness
+    assert r_two.canvas.max() > r_one.canvas.max()
+
+
 def test_density_expand_brightens_dense_routes(renderer):
     """density_expand=True should produce a brighter image on dense pixel regions."""
     renderer.canvas[150:250, 150:250] = 50.0  # 100x100 dense block
