@@ -2,6 +2,7 @@ import os
 import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from config import GAMMA
 
 
 METERS_PER_MILE = 1609.344
@@ -82,40 +83,62 @@ def render_typography(img, sf_runs, font_path,
 
 
 def render_legend(img, color_ramp, font_path,
-                  text_color=(255, 255, 255)):
+                  text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None):
     """
-    Draw a horizontal color gradient bar in the bottom-center with
-    '1 run' on the left and '100+ runs' on the right.
-    Mirrors the margin of render_typography but uses a smaller font.
+    Draw a horizontal color gradient bar centered on the typography text block.
+
+    The bar sweeps from the color a single-run route actually produces
+    (computed from canvas_max_val + gamma) to the peak color, matching what
+    the renderer renders.  If canvas_max_val is None the bar starts at t=0
+    (raw ramp start).
+
+    Args:
+        gamma:           Same gamma used in renderer.to_image().
+        canvas_max_val:  renderer.canvas.max() after rasterize_all().
     """
+    import math
     w, h = img.size
-    font_size    = max(6, h // 100)   # much smaller than main stats (h//40)
-    margin       = max(10, h // 25)
-    bar_height   = max(4, h // 200)
-    bar_width    = max(80, w // 6)
-    label_gap    = max(4, h // 300)
+    font_size  = max(6, h // 100)
+    margin     = max(10, h // 25)
+    bar_height = max(4, h // 200)
+    bar_width  = max(80, w // 4)          # 50% wider than the old w // 6
+    label_gap  = max(4, h // 300)
 
     font = _load_font(font_path, font_size)
     draw = ImageDraw.Draw(img)
 
-    # Position: bottom-center
-    bar_top    = h - margin - font_size - label_gap - bar_height
-    bar_bottom = bar_top + bar_height
-    bar_left   = (w - bar_width) // 2
-    bar_right  = bar_left + bar_width
+    # Vertical: center legend on the midpoint of the 4-line typography block
+    main_font_size = max(10, h // 40)
+    main_line_gap  = max(8,  h // 120)
+    block_top    = h - margin - 4 * main_font_size - 3 * main_line_gap
+    block_bottom = h - margin
+    block_mid_y  = (block_top + block_bottom) // 2
+    legend_h     = bar_height + label_gap + font_size
+    bar_top      = block_mid_y - legend_h // 2
+    bar_bottom   = bar_top + bar_height
 
-    # Build gradient by interpolating color_ramp across bar width
-    bar_img = Image.new("RGB", (bar_width, bar_height))
+    # Horizontal: centered
+    bar_left  = (w - bar_width) // 2
+    bar_right = bar_left + bar_width
+
+    # t_min: the ramp position a single-run route produces after log+gamma
+    if canvas_max_val is not None and canvas_max_val > 1:
+        t_min = (math.log1p(1.0) / math.log1p(float(canvas_max_val))) ** gamma
+    else:
+        t_min = 0.0
+
+    # Build gradient by interpolating color_ramp from t_min → 1.0
+    bar_img    = Image.new("RGB", (bar_width, bar_height))
     bar_pixels = bar_img.load()
     for px in range(bar_width):
         t = px / max(bar_width - 1, 1)
-        # find ramp segment
+        t_ramp = t_min + t * (1.0 - t_min)   # sweep t_min → 1.0
         r, g, b = color_ramp[0][1]
         for i in range(len(color_ramp) - 1):
             t0, c0 = color_ramp[i]
             t1, c1 = color_ramp[i + 1]
-            if t0 <= t <= t1:
-                alpha = (t - t0) / (t1 - t0)
+            if t0 <= t_ramp <= t1:
+                alpha = (t_ramp - t0) / (t1 - t0)
                 r = int(c0[0] * (1 - alpha) + c1[0] * alpha)
                 g = int(c0[1] * (1 - alpha) + c1[1] * alpha)
                 b = int(c0[2] * (1 - alpha) + c1[2] * alpha)
@@ -126,17 +149,17 @@ def render_legend(img, color_ramp, font_path,
     img.paste(bar_img, (bar_left, bar_top))
 
     # Labels below the bar
-    label_y = bar_bottom + label_gap
-    shadow = (0, 0, 0)
+    label_y       = bar_bottom + label_gap
+    shadow        = (0, 0, 0)
     shadow_offset = max(1, h // 3600)
-    left_label  = "1 run"
-    right_label = "100+ runs"
-    draw.text((bar_left + shadow_offset, label_y + shadow_offset), left_label, font=font, fill=shadow)
-    draw.text((bar_left, label_y), left_label, font=font, fill=text_color)
+    left_label    = "1 run"
+    right_label   = "100+ runs"
+    draw.text((bar_left + shadow_offset, label_y + shadow_offset), left_label,  font=font, fill=shadow)
+    draw.text((bar_left, label_y),                                  left_label,  font=font, fill=text_color)
     right_bbox = draw.textbbox((0, 0), right_label, font=font)
     right_w = right_bbox[2] - right_bbox[0]
     right_x = bar_right - right_w
     draw.text((right_x + shadow_offset, label_y + shadow_offset), right_label, font=font, fill=shadow)
-    draw.text((right_x, label_y), right_label, font=font, fill=text_color)
+    draw.text((right_x, label_y),                                  right_label, font=font, fill=text_color)
 
     return img

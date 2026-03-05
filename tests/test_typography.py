@@ -216,6 +216,38 @@ def test_render_legend_labels_include_fixed_max(tmp_path):
     assert "100+" in all_text
 
 
+def test_render_legend_left_color_shifts_with_gamma_correction(tmp_path):
+    """Left edge of the legend bar should change when gamma correction is applied.
+
+    Without correction (canvas_max_val=None, gamma=1.0) the bar starts at t=0
+    (raw ramp[0] color).  With gamma=0.4 and canvas_max_val=50, t_min≈0.45
+    so the left edge should be a noticeably different (violet) color.
+    """
+    font_path = str(tmp_path / "f.ttf")
+
+    def left_bar_color(gamma_val, max_val):
+        img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+            render_legend(img, color_ramp=_RAMP, font_path=font_path,
+                          gamma=gamma_val, canvas_max_val=max_val)
+        arr = np.array(img)
+        h, w = arr.shape[:2]
+        bar_width = max(80, w // 4)
+        bar_left = (w - bar_width) // 2 + 2   # +2 to avoid edge antialiasing
+        col = arr[:, bar_left, :]
+        bright = col[col.sum(axis=1) > 30]
+        return bright.mean(axis=0) if len(bright) else np.zeros(3)
+
+    raw_color        = left_bar_color(gamma_val=1.0, max_val=None)
+    corrected_color  = left_bar_color(gamma_val=0.4, max_val=50.0)
+
+    color_diff = np.abs(corrected_color - raw_color).mean()
+    assert color_diff > 15, (
+        f"Left bar edge should shift with gamma correction "
+        f"(raw={raw_color}, corrected={corrected_color}, diff={color_diff:.1f})"
+    )
+
+
 def test_download_font_redownloads_corrupt_file(tmp_path):
     """If font file exists but is tiny (corrupt/empty), delete and re-download."""
     import os
