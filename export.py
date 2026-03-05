@@ -72,7 +72,7 @@ def main():
     renderer.rasterize_all(runs)
 
     img_array = renderer.to_image(
-        bloom=args.bloom, vignette=args.vignette, grain=args.grain,
+        bloom=False, vignette=args.vignette, grain=args.grain,
         glow=args.glow, hot_bloom=args.hot_bloom, density_expand=args.density_expand
     )
     img = Image.fromarray(img_array, mode="RGB")
