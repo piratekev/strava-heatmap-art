@@ -33,8 +33,8 @@ def fetch_map_tile(bounds, zoom, cache_path, target_size,
     """
     Fetch tiles covering bounds, stitch, crop to exact bounds, resize to target_size.
     Uses CARTO dark_nolabels by default (no token required).
-    cache_path is used as a prefix; a 6-char bounds hash is embedded in the filename
-    so that different bounds never share a cached tile.
+    cache_path is used as a prefix; a 6-char bounds+zoom hash is embedded in the filename
+    so that different bounds or zoom levels never share a cached tile.
     """
     bounds_key = hashlib.md5(f"{zoom}:{repr(sorted(bounds.items()))}".encode()).hexdigest()[:6]
     root, ext = os.path.splitext(cache_path)
