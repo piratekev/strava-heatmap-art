@@ -19,12 +19,13 @@ from src.fetcher import StravaClient, fetch_activities
 from src.processor import filter_sf_runs, decode_runs
 from src.renderer import StravaRenderer
 from src.tiles import fetch_map_tile
-from src.typography import render_typography, _download_font
+from src.typography import render_typography, render_legend, _download_font
 from config import (
     CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, OUTPUT_DIR,
     MAP_TILE_OPACITY, MAP_TILE_CACHE,
     MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
+    ROUTE_COLOR_RAMP,
 )
 from PIL import Image
 import numpy as np
@@ -101,6 +102,7 @@ def main():
     # Typography
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
     img = render_typography(img, sf_runs, font_path=MAP_FONT_PATH)
+    img = render_legend(img, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH)
 
     # Save
     if args.output:

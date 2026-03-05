@@ -218,6 +218,25 @@ def test_hot_bloom_brightens_dense_pixels(renderer):
     assert with_hot > without
 
 
+def test_hot_bloom_does_not_spread_to_medium_density(renderer):
+    """Hot bloom must not fire on medium-density pixels that fall below HOT_BLOOM_THRESHOLD.
+
+    With GAMMA=0.4, canvas=5 normalises to ~0.67 post-gamma — below the intended
+    HOT_BLOOM_THRESHOLD of 0.75.  The blocks are 330 px apart so gaussian spread from
+    the peak block does not contaminate the medium region.
+    """
+    renderer.canvas[50:100, 50:100] = 100.0    # peak: norm → 1.0
+    renderer.canvas[380:430, 380:430] = 5.0    # medium: norm ≈ 0.39 → ~0.67 after gamma 0.4
+
+    without_hot = renderer.to_image(bloom=False, vignette=False, grain=False,
+                                    glow=False, hot_bloom=False, density_expand=False, gamma=0.4)
+    with_hot    = renderer.to_image(bloom=False, vignette=False, grain=False,
+                                    glow=False, hot_bloom=True,  density_expand=False, gamma=0.4)
+    medium_delta = float(with_hot[380:430, 380:430].astype(int).mean() -
+                         without_hot[380:430, 380:430].astype(int).mean())
+    assert medium_delta < 3  # medium region should not glow from hot bloom
+
+
 def test_density_expand_brightens_dense_routes(renderer):
     """density_expand=True should produce a brighter image on dense pixel regions."""
     renderer.canvas[150:250, 150:250] = 50.0  # 100x100 dense block

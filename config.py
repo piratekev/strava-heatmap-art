@@ -16,7 +16,7 @@ PRINT_DPI = 300
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.0,  [150, 100, 255]),   # rarely-run → brighter indigo (more luminous, same hue)
+    (0.0,  [100, 100, 255]),   # rarely-run → brighter indigo (more luminous, same hue)
     (0.45, [200,   0, 255]),   # moderate   → electric violet
     (0.8,  [255,   0, 180]),   # heavy      → neon hot pink
     (1.0,  [255, 220, 255]),   # peak       → blown-out pink-white (kept at 220 so g > 200 test passes)
@@ -28,14 +28,14 @@ ROUTE_COLOR_RAMP = [
 # Thicker = bolder single-run routes; hot-bloom + density-expand will still make
 # heavily-run corridors *appear* thicker even with a lower base value.
 #   16 = original (chunky)   12 = 25% thinner (current)
-ROUTE_LINE_THICKNESS = 12
+ROUTE_LINE_THICKNESS = 2
 
 # Gamma: controls how bright dim / rarely-run routes appear.
 # Applied as:  norm = norm ** GAMMA  (before colour mapping)
 # Values below 1.0 lift low-density pixels (makes single-run lines more visible).
 # Values above 1.0 suppress them (good if you want only hot routes to pop).
-#   1.0 = linear (no lift)   0.7 = old default   0.55 = current (single-run lines clearly visible)
-GAMMA = 0.55
+#   1.0 = linear (no lift)   0.7 = old default   0.5 = current (single-run lines clearly visible)
+GAMMA = 0.4
 
 # ── Density expand ───────────────────────────────────────────────────────────
 # Thickens corridors proportional to how many times they were run.
@@ -59,16 +59,20 @@ DENSITY_EXPAND_POWER = 2.0
 # Regular bloom is disabled in export.py; this is the only glow that fires.
 
 # Normalised density above which hot bloom activates (0–1 scale after gamma).
-# 0.5 = fires on the top half of the density range.
-HOT_BLOOM_THRESHOLD = 0.5
+# With low GAMMA values (e.g. 0.4) the gamma lift pushes medium-density pixels
+# above 0.5, so raise this threshold to keep hot bloom focused on true peaks only.
+#   0.5 = broad (fires on many routes when GAMMA < 0.7)
+#   0.75 = focused — with GAMMA=0.4, fires only where raw norm > ~0.49 (top half of density)
+HOT_BLOOM_THRESHOLD = 0.75
 
 # Width of the hot-bloom gaussian (multiplied by bloom_sigma_wide in renderer).
-# Higher = wider halo around hot corridors.   Good range: 2–5.
-HOT_BLOOM_SIGMA_MULT = 3.0
+# Increase when line thickness is low — thinner source lines need wider spread
+# to produce the same visible halo.   Good range: 3–6.
+HOT_BLOOM_SIGMA_MULT = 5.0
 
 # Screen-blend strength of the hot-bloom layer.
-# Higher = brighter / more blown-out white cores.   Good range: 1.0–3.0.
-HOT_BLOOM_STRENGTH = 2.0
+# Higher = brighter / more blown-out white cores.   Good range: 1.0–5.0.
+HOT_BLOOM_STRENGTH = 4.0
 
 # Background color
 BG_COLOR = [0, 0, 0]  # pure black
