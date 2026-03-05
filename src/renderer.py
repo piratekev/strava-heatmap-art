@@ -5,7 +5,8 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter
 from config import (SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR,
                     HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
-                    ROUTE_LINE_THICKNESS, DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH, DENSITY_EXPAND_POWER)
+                    ROUTE_LINE_THICKNESS, DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH,
+                    DENSITY_EXPAND_POWER, GAMMA)
 
 
 def _ramp_colors(norm, ramp):
@@ -87,7 +88,7 @@ class StravaRenderer:
                  bloom_strength=0.6, glow=True, glow_strength=1.0,
                  vignette=True, vignette_strength=0.5,
                  grain=True, grain_amount=0.025,
-                 gamma=0.7, hot_bloom=True, density_expand=True):
+                 gamma=GAMMA, hot_bloom=True, density_expand=True):
         """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8."""
         bg = np.array(BG_COLOR, dtype=np.float32)
         max_val = self.canvas.max()

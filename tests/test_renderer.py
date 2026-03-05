@@ -228,6 +228,14 @@ def test_density_expand_brightens_dense_routes(renderer):
     assert with_expand > without
 
 
+def test_to_image_default_gamma_matches_config():
+    """Default gamma in to_image() should equal GAMMA from config."""
+    import inspect
+    from config import GAMMA
+    sig = inspect.signature(StravaRenderer.to_image)
+    assert sig.parameters["gamma"].default == GAMMA
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math
