@@ -30,6 +30,15 @@ ROUTE_COLOR_RAMP = [
 #   16 = original (chunky)   12 = 25% thinner (current)
 ROUTE_LINE_THICKNESS = 2
 
+# Extra stroke width (px) added to the base for routes in the top 50% by
+# density score (mean canvas value along their path after pass-1 rasterize).
+# Only the highest applicable bonus fires — 50-bonus does NOT stack with 10-bonus.
+ROUTE_LINE_THICKNESS_50_BONUS = 4
+
+# Extra stroke width (px) for routes in the top 10% by density score.
+# Much thicker than 50-bonus to make the hottest corridors visually dominant.
+ROUTE_LINE_THICKNESS_10_BONUS = 10
+
 # Gamma: controls how bright dim / rarely-run routes appear.
 # Applied as:  norm = norm ** GAMMA  (before colour mapping)
 # Values below 1.0 lift low-density pixels (makes single-run lines more visible).
