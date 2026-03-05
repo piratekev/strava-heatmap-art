@@ -22,16 +22,53 @@ ROUTE_COLOR_RAMP = [
     (1.0,  [255, 220, 255]),   # peak       → blown-out pink-white (kept at 220 so g > 200 test passes)
 ]
 
-# Hot bloom: extra spread on high-density (heavily-run) pixels
-HOT_BLOOM_THRESHOLD  = 0.7   # norm value above which hot bloom activates
-HOT_BLOOM_SIGMA_MULT = 2.5   # multiplier on bloom_sigma_wide for the hot spread
-HOT_BLOOM_STRENGTH   = 1.5   # screen-blend strength of the hot layer
+# ── Line drawing ─────────────────────────────────────────────────────────────
 
-# Density expand: tight line-thickening pass proportional to route density
-ROUTE_LINE_THICKNESS    = 4     # base cv2.line thickness (was 3)
-DENSITY_EXPAND_SIGMA    = 3.0   # tight gaussian — thickens lines, not halos
-DENSITY_EXPAND_STRENGTH = 1.4   # screen-blend intensity
-DENSITY_EXPAND_POWER    = 2.0   # norm exponent — focuses effect on dense routes (0.9²=0.81, 0.3²=0.09)
+# Base stroke width in pixels at full 4960×5400 canvas.
+# Thicker = bolder single-run routes; hot-bloom + density-expand will still make
+# heavily-run corridors *appear* thicker even with a lower base value.
+#   16 = original (chunky)   12 = 25% thinner (current)
+ROUTE_LINE_THICKNESS = 12
+
+# Gamma: controls how bright dim / rarely-run routes appear.
+# Applied as:  norm = norm ** GAMMA  (before colour mapping)
+# Values below 1.0 lift low-density pixels (makes single-run lines more visible).
+# Values above 1.0 suppress them (good if you want only hot routes to pop).
+#   1.0 = linear (no lift)   0.7 = old default   0.55 = current (single-run lines clearly visible)
+GAMMA = 0.55
+
+# ── Density expand ───────────────────────────────────────────────────────────
+# Thickens corridors proportional to how many times they were run.
+# Has almost no effect on once-run routes (0.3^2 = 0.09) but strongly
+# amplifies heavy corridors (0.9^2 = 0.81).
+
+# Gaussian sigma for the tight spread (pixels at full canvas).
+# Smaller = thickens lines without creating halos.   Good range: 2–5.
+DENSITY_EXPAND_SIGMA = 3.0
+
+# Screen-blend intensity of the expanded layer.
+# Higher = denser routes appear thicker / brighter.   Good range: 1.0–2.0.
+DENSITY_EXPAND_STRENGTH = 1.4
+
+# Exponent applied to norm before expanding.
+# Higher = effect concentrates on the most-run corridors only.   Good range: 1.5–3.0.
+DENSITY_EXPAND_POWER = 2.0
+
+# ── Hot bloom ────────────────────────────────────────────────────────────────
+# Adds an intense wide glow ONLY on white-hot (peak-density) pixels.
+# Regular bloom is disabled in export.py; this is the only glow that fires.
+
+# Normalised density above which hot bloom activates (0–1 scale after gamma).
+# 0.5 = fires on the top half of the density range.
+HOT_BLOOM_THRESHOLD = 0.5
+
+# Width of the hot-bloom gaussian (multiplied by bloom_sigma_wide in renderer).
+# Higher = wider halo around hot corridors.   Good range: 2–5.
+HOT_BLOOM_SIGMA_MULT = 3.0
+
+# Screen-blend strength of the hot-bloom layer.
+# Higher = brighter / more blown-out white cores.   Good range: 1.0–3.0.
+HOT_BLOOM_STRENGTH = 2.0
 
 # Background color
 BG_COLOR = [0, 0, 0]  # pure black
@@ -51,6 +88,17 @@ OUTPUT_DIR = "output"
 
 # Map tiles
 MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
+
+# Map tile zoom level — controls street detail and download cost.
+# Each step up doubles resolution in each dimension (4× tile count).
+#   11 = fast preview, city-level blobs
+#   13 = neighbourhood streets visible
+#   15 = current default — clear streets, ~150 tiles for SF, cached after first run
+#   16 = sharper detail (~600 tiles, 2–3 min first download)
+#   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
+# Set high (16–17) only when producing the final print file.
+MAP_TILE_ZOOM = 15
+
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 MAP_TILE_CACHE = "data/map_tile.png"
 MAP_FONT_PATH = "data/fonts/Montserrat-SemiBold.ttf"
