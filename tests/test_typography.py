@@ -2,7 +2,14 @@ import numpy as np
 import pytest
 from unittest.mock import patch
 from PIL import Image, ImageFont
-from src.typography import render_typography, _download_font
+from src.typography import render_typography, render_legend, _download_font
+
+_RAMP = [
+    (0.0,  [150, 100, 255]),
+    (0.45, [200,   0, 255]),
+    (0.8,  [255,   0, 180]),
+    (1.0,  [255, 220, 255]),
+]
 
 
 def _make_runs(n=10, year_start=2021, year_end=2024):
@@ -163,6 +170,50 @@ def test_download_font_sends_user_agent(tmp_path):
     # urllib.request.Request normalises header keys to title-case first char only,
     # so "User-Agent" is stored internally as "User-agent"
     assert "User-agent" in call_arg.headers
+
+
+def test_render_legend_modifies_bottom_center(tmp_path):
+    """render_legend should draw into the bottom-center, not bottom-left or bottom-right."""
+    img = Image.new("RGB", (540, 540), color=(10, 15, 30))
+    before = np.array(img).copy()
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        render_legend(img, color_ramp=_RAMP, font_path=str(tmp_path / "f.ttf"))
+    after = np.array(img)
+    diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
+    h, w = diff.shape
+    # Divide bottom half into three columns; center column should have the most changes
+    third = w // 3
+    bottom = diff[h // 2 :, :]
+    left_third   = bottom[:, :third].sum()
+    center_third = bottom[:, third : 2 * third].sum()
+    right_third  = bottom[:, 2 * third :].sum()
+    assert center_third > left_third
+    assert center_third > right_third
+
+
+def test_render_legend_bar_has_multiple_colors(tmp_path):
+    """The gradient bar should contain more than one distinct color."""
+    img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        render_legend(img, color_ramp=_RAMP, font_path=str(tmp_path / "f.ttf"))
+    arr = np.array(img)
+    h, w = arr.shape[:2]
+    # Sample a horizontal slice in the bottom-center area
+    third = w // 3
+    bar_region = arr[h * 3 // 4 :, third : 2 * third]
+    unique_colors = len(np.unique(bar_region.reshape(-1, 3), axis=0))
+    assert unique_colors > 5
+
+
+def test_render_legend_labels_include_fixed_max(tmp_path):
+    """Labels should include '1 run' on the left and '100+ runs' on the right."""
+    img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        with patch("PIL.ImageDraw.ImageDraw.text") as mock_text:
+            render_legend(img, color_ramp=_RAMP, font_path=str(tmp_path / "f.ttf"))
+    all_text = " ".join(str(c) for c in mock_text.call_args_list)
+    assert "1 run" in all_text
+    assert "100+" in all_text
 
 
 def test_download_font_redownloads_corrupt_file(tmp_path):
