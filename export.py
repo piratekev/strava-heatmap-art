@@ -25,7 +25,7 @@ from config import (
     MAP_TILE_OPACITY, MAP_TILE_CACHE,
     MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
-    ROUTE_COLOR_RAMP,
+    ROUTE_COLOR_RAMP, GAMMA,
 )
 from PIL import Image
 import numpy as np
@@ -71,6 +71,7 @@ def main():
 
     renderer = StravaRenderer(width=w, height=h)
     renderer.rasterize_all(runs)
+    canvas_max_val = float(renderer.canvas.max())
 
     img_array = renderer.to_image(
         bloom=False, vignette=args.vignette, grain=args.grain,
@@ -102,7 +103,8 @@ def main():
     # Typography
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
     img = render_typography(img, sf_runs, font_path=MAP_FONT_PATH)
-    img = render_legend(img, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH)
+    img = render_legend(img, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
+                        gamma=GAMMA, canvas_max_val=canvas_max_val)
 
     # Save
     if args.output:
