@@ -5,10 +5,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 METERS_PER_MILE = 1609.344
 
+_MIN_FONT_BYTES = 50_000   # real TTF files are 100 KB+; anything smaller is corrupt
+
 
 def _download_font(font_path, url):
-    """Download font TTF to font_path if not already cached. Silently skips on failure."""
+    """Download font TTF to font_path if not already cached. Silently skips on failure.
+    If an existing file is under _MIN_FONT_BYTES it is deleted and re-downloaded."""
     os.makedirs(os.path.dirname(font_path), exist_ok=True)
+    if os.path.exists(font_path) and os.path.getsize(font_path) < _MIN_FONT_BYTES:
+        os.remove(font_path)
     if not os.path.exists(font_path):
         print(f"Downloading font to {font_path}...")
         try:

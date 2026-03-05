@@ -163,3 +163,30 @@ def test_download_font_sends_user_agent(tmp_path):
     # urllib.request.Request normalises header keys to title-case first char only,
     # so "User-Agent" is stored internally as "User-agent"
     assert "User-agent" in call_arg.headers
+
+
+def test_download_font_redownloads_corrupt_file(tmp_path):
+    """If font file exists but is tiny (corrupt/empty), delete and re-download."""
+    import os
+    import urllib.request
+    from unittest.mock import patch, MagicMock
+
+    font_path = str(tmp_path / "fonts" / "test.ttf")
+    os.makedirs(os.path.dirname(font_path), exist_ok=True)
+    # Write a tiny corrupt file (simulates a failed previous download)
+    with open(font_path, "wb") as f:
+        f.write(b"not a font")
+
+    mock_response = MagicMock()
+    mock_response.read.return_value = b"x" * 100_000   # simulates a real font
+    mock_response.__enter__ = lambda s: s
+    mock_response.__exit__ = MagicMock(return_value=False)
+
+    with patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+        _download_font(font_path, "https://example.com/font.ttf")
+
+    # Download should have been attempted despite file existing
+    mock_urlopen.assert_called_once()
+    # File should now contain the downloaded content
+    with open(font_path, "rb") as f:
+        assert len(f.read()) == 100_000
