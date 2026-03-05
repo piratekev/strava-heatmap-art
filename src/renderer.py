@@ -116,6 +116,7 @@ class StravaRenderer:
             hot_layer = gaussian_filter(hot_mask, sigma=bloom_sigma_wide * HOT_BLOOM_SIGMA_MULT)
             norm = 1 - (1 - norm) * (1 - hot_layer * HOT_BLOOM_STRENGTH)
 
+        norm = np.clip(norm, 0.0, 1.0)  # screen-blend ops can push norm > 1; clamp before colour mapping
         route_colors = _ramp_colors(norm, ROUTE_COLOR_RAMP)
         rgb = np.zeros((self.height, self.width, 3), dtype=np.float32)
         for c in range(3):

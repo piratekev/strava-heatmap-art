@@ -236,6 +236,22 @@ def test_to_image_default_gamma_matches_config():
     assert sig.parameters["gamma"].default == GAMMA
 
 
+def test_near_peak_density_pixels_are_not_black(renderer):
+    """Near-peak-density pixels must not render black — norm > 1 overflow bug guard.
+
+    density_expand uses a screen-blend with DENSITY_EXPAND_STRENGTH > 1.0, which can
+    push norm above 1.0 for pixels just below peak density.  When norm > 1 the colour
+    formula produces negative values that clip to 0 (black).
+    """
+    # Peak block sets the normalisation ceiling (norm → 1.0 there).
+    renderer.canvas[150:200, 100:150] = 200.0
+    # Near-peak block: norm ≈ log1p(150)/log1p(200) ≈ 0.946 → after gamma+expand → > 1.0
+    renderer.canvas[300:350, 100:150] = 150.0
+    img = renderer.to_image(bloom=False, vignette=False, grain=False, glow=False, hot_bloom=False)
+    near_peak = img[300:350, 100:150]
+    assert near_peak.mean() > 50  # should be near-white hot, not black (0)
+
+
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     import math
