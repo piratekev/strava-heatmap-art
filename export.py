@@ -25,7 +25,7 @@ from config import (
     MAP_TILE_OPACITY, MAP_TILE_CACHE,
     MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
-    ROUTE_COLOR_RAMP, GAMMA,
+    ROUTE_COLOR_RAMP, GAMMA, PRINT_DPI,
 )
 from PIL import Image
 import numpy as np
@@ -115,7 +115,7 @@ def main():
         suffix = "-preview" if args.preview else ""
         out_path = os.path.join(OUTPUT_DIR, f"poster{suffix}-{ts}.png")
 
-    dpi = 30 if args.preview else 300
+    dpi = 3 if args.preview else PRINT_DPI
     img.save(out_path, dpi=(dpi, dpi))
     print(f"Done. {out_path}")
 

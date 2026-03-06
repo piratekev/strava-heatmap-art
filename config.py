@@ -9,7 +9,7 @@ SF_BOUNDS = {
 # Print canvas: 16x20" aspect ratio (4:5) — prints at ~285 DPI
 CANVAS_WIDTH_PX  = 4560   # 16" at 285 DPI
 CANVAS_HEIGHT_PX = 5700   # 20" at 285 DPI
-PRINT_DPI = 300
+PRINT_DPI = 285
 
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
@@ -104,8 +104,8 @@ MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 # Each step up doubles resolution in each dimension (4× tile count).
 #   11 = fast preview, city-level blobs
 #   13 = neighbourhood streets visible
-#   15 = current default — clear streets, ~150 tiles for SF, cached after first run
-#   16 = sharper detail (~600 tiles, 2–3 min first download)
+#   15 = neighbourhood detail — clear streets, ~150 tiles for SF
+#   16 = current default — sharper detail (~600 tiles, 2–3 min first download)
 #   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
 # Set high (16–17) only when producing the final print file.
 MAP_TILE_ZOOM = 16
