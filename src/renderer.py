@@ -12,7 +12,6 @@ from config import (SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RA
 
 def _ramp_colors(norm, ramp):
     """Vectorized color ramp: for each pixel in norm [0,1], return interpolated RGB."""
-    # Pixels with norm below ramp[0][0] receive no segment match → contribute 0 (background color).
     result = np.zeros((*norm.shape, 3), dtype=np.float32)
     for i in range(len(ramp) - 1):
         t0, c0 = ramp[i]
