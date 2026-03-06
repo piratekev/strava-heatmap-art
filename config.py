@@ -1,14 +1,14 @@
 # San Francisco bounding box
 SF_BOUNDS = {
     "lat_min": 37.7068,     # unchanged
-    "lat_max": 37.8387,     # extended northward to maintain Mercator 4:5 aspect ratio with wider lng
-    "lng_min": -122.5146,   # extended west 50px at current pixel density (+50 × 0.00002864°/px)
-    "lng_max": -122.3812,   # extended east 50px at current pixel density (+50 × 0.00002864°/px)
+    "lat_max": 37.8392,     # extended northward to maintain Mercator 4:5 aspect ratio with wider lng
+    "lng_min": -122.5152,   # extended west 20px at current pixel density (+20 × 0.00002863°/px)
+    "lng_max": -122.3812,   # unchanged
 }
 
 # Print canvas: 16x20" aspect ratio (4:5) — prints at ~285 DPI
-CANVAS_WIDTH_PX  = 4660   # was 4560 — +50px each side
-CANVAS_HEIGHT_PX = 5825   # 4660/0.8 = 5825 for 4:5 ratio
+CANVAS_WIDTH_PX  = 4680   # was 4660 — +20px left side
+CANVAS_HEIGHT_PX = 5850   # 4680/0.8 = 5850 for 4:5 ratio
 PRINT_DPI = 285
 
 # Density color ramp: (normalized_value, [R, G, B])
