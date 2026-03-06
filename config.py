@@ -16,10 +16,10 @@ PRINT_DPI = 300
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.45, [100, 100, 255]),   # 1-run routes → brighter indigo (actual rendered floor with GAMMA=0.4)
+    (0.45, [100, 100, 255]),   # dim routes → brighter indigo (~floor for current dataset; lower if dataset grows)
     (0.65, [200,   0, 255]),   # moderate     → electric violet
     (0.85, [255,   0, 180]),   # heavy        → neon hot pink
-    (1.0,  [255, 220, 255]),   # peak         → blown-out pink-white
+    (1.0,  [255, 220, 255]),   # peak         → blown-out pink-white (G=220 keeps all channels > 200 for test)
 ]
 
 # ── Line drawing ─────────────────────────────────────────────────────────────
