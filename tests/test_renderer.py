@@ -48,7 +48,7 @@ def test_canvas_initialized_to_zero(renderer):
 
 def test_full_resolution_canvas():
     r = StravaRenderer()
-    assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)  # (5700, 4560)
+    assert r.canvas.shape == (CANVAS_HEIGHT_PX, CANVAS_WIDTH_PX)  # (5825, 4660)
 
 
 def test_canvas_is_not_square():
