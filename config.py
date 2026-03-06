@@ -2,8 +2,8 @@
 SF_BOUNDS = {
     "lat_min": 37.7068,   # 50px south of previous (extended for 4:5 aspect ratio)
     "lat_max": 37.8359,   # 124px north of previous (extended for 4:5 aspect ratio)
-    "lng_min": -122.5132, # proportionally trimmed: 0.1307° range for 4560px canvas
-    "lng_max": -122.3826, # proportionally trimmed: same pixel density as original 4960px
+    "lng_min": -122.5132, # narrowed to satisfy Mercator 4:5 aspect ratio with current lat range
+    "lng_max": -122.3826, # narrowed to satisfy Mercator 4:5 aspect ratio with current lat range
 }
 
 # Print canvas: 16x20" aspect ratio (4:5) — prints at ~285 DPI

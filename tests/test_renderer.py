@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import pytest
 from src.renderer import StravaRenderer
@@ -293,7 +294,6 @@ def test_near_peak_density_pixels_are_not_black(renderer):
 
 def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
-    import math
     r = StravaRenderer(width=540, height=540)
     # Compute the Mercator midpoint of SF bounds
     merc_min = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_min"])))
@@ -308,7 +308,6 @@ def test_project_uses_mercator_y():
 
 def test_sf_bounds_aspect_ratio_matches_canvas():
     """SF_BOUNDS Mercator aspect ratio must match canvas pixel ratio (4:5 = 0.8)."""
-    import math
     from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
 
     lng_range_rad = (SF_BOUNDS["lng_max"] - SF_BOUNDS["lng_min"]) * math.pi / 180

@@ -3,7 +3,7 @@
 Generate and save the SF running heatmap poster.
 
 Usage:
-    python export.py                 # full 300 DPI render
+    python export.py                 # full ~285 DPI render (PRINT_DPI)
     python export.py --preview       # 1/10 scale for quick iteration
     python export.py --fetch         # fetch new activities first
     python export.py --no-map        # skip map background tile

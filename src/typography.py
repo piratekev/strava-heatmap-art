@@ -52,10 +52,10 @@ def render_typography(img, sf_runs, font_path,
     total_elev = f"{total_elev_ft:,.0f} ft \u2191"
 
     w, h = img.size
-    font_size = max(10, h // 40)     # ~135px at 5400, 13px at 540
-    margin = max(10, h // 25)        # ~216px at 5400, 22px at 540
+    font_size = max(10, h // 40)     # ~143px at 5700, 14px at 570
+    margin = max(10, h // 25)        # ~228px at 5700, 23px at 570
     shadow_offset = max(2, h // 1800)
-    line_gap = max(8, h // 120)      # ~45px at 5400, 8px at 540
+    line_gap = max(8, h // 120)      # ~48px at 5700, 8px at 570
 
     draw = ImageDraw.Draw(img)
     font = _load_font(font_path, font_size)
