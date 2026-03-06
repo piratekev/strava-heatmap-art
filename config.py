@@ -6,10 +6,8 @@ SF_BOUNDS = {
     "lng_max": -122.3754, # shifted +0.0066° east
 }
 
-# Print canvas: 16.53x18" @ 300 DPI
-# aspect = lng_range_rad / merc_range = 0.002531 / (lat_range_rad / cos(lat_mid))
-#        = 0.002531 / (0.002182 / 0.7919) = 0.002531 / 0.002756 ≈ 0.919
-CANVAS_WIDTH_PX  = 4960   # 16.53" at 300 DPI — matches Mercator aspect ratio of new SF bounds
+# Print canvas: 16x18" @ 300 DPI (standard print size)
+CANVAS_WIDTH_PX  = 4800   # 16" at 300 DPI
 CANVAS_HEIGHT_PX = 5400   # 18" at 300 DPI
 PRINT_DPI = 300
 
@@ -24,7 +22,7 @@ ROUTE_COLOR_RAMP = [
 
 # ── Line drawing ─────────────────────────────────────────────────────────────
 
-# Base stroke width in pixels at full 4960×5400 canvas.
+# Base stroke width in pixels at full 4800×5400 canvas.
 # Thicker = bolder single-run routes; hot-bloom + density-expand will still make
 # heavily-run corridors *appear* thicker even with a lower base value.
 #   16 = original (chunky)   12 = 25% thinner (current)
