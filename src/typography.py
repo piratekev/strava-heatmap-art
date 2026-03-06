@@ -98,11 +98,11 @@ def render_legend(img, color_ramp, font_path,
     """
     import math
     w, h = img.size
-    font_size  = max(6, h // 100)
+    font_size  = max(9,  h * 3 // 200)    # 1.5× was max(6, h // 100)
     margin     = max(10, h // 25)
-    bar_height = max(4, h // 200)
-    bar_width  = max(80, w // 4)          # 50% wider than the old w // 6
-    label_gap  = max(4, h // 300)
+    bar_height = max(6,  h * 3 // 400)    # 1.5× was max(4, h // 200)
+    bar_width  = max(120, w * 3 // 8)     # 1.5× was max(80, w // 4)
+    label_gap  = max(6,  h // 200)        # 1.5× was max(4, h // 300)
 
     font = _load_font(font_path, font_size)
     draw = ImageDraw.Draw(img)

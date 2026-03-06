@@ -232,7 +232,7 @@ def test_render_legend_left_color_shifts_with_gamma_correction(tmp_path):
                           gamma=gamma_val, canvas_max_val=max_val)
         arr = np.array(img)
         h, w = arr.shape[:2]
-        bar_width = max(80, w // 4)
+        bar_width = max(120, w * 3 // 8)
         bar_left = (w - bar_width) // 2 + 2   # +2 to avoid edge antialiasing
         col = arr[:, bar_left, :]
         bright = col[col.sum(axis=1) > 30]
