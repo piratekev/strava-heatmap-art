@@ -304,3 +304,22 @@ def test_project_uses_mercator_y():
     lng_center = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
     x, y = r.project(lat_mercator_center, lng_center)
     assert abs(y - 270) < 2  # should be very close to canvas center
+
+
+def test_sf_bounds_aspect_ratio_matches_canvas():
+    """SF_BOUNDS Mercator aspect ratio must match canvas pixel ratio (4:5 = 0.8)."""
+    import math
+    from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
+
+    lng_range_rad = (SF_BOUNDS["lng_max"] - SF_BOUNDS["lng_min"]) * math.pi / 180
+    merc_max = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_max"])))
+    merc_min = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_min"])))
+    merc_range = merc_max - merc_min
+
+    actual_ratio = lng_range_rad / merc_range
+    target_ratio = CANVAS_WIDTH_PX / CANVAS_HEIGHT_PX
+
+    assert abs(actual_ratio - target_ratio) < 0.005, (
+        f"Mercator aspect ratio {actual_ratio:.4f} does not match "
+        f"canvas ratio {target_ratio:.4f} (tolerance 0.005)"
+    )

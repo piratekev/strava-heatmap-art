@@ -1,14 +1,14 @@
 # San Francisco bounding box
 SF_BOUNDS = {
-    "lat_min": 37.7080,   # SF south city line (Geneva Ave / Daly City border)
-    "lat_max": 37.8330,   # just north of GG Bridge road
-    "lng_min": -122.5204, # shifted +0.0066° east (225px at 4960px canvas width)
-    "lng_max": -122.3754, # shifted +0.0066° east
+    "lat_min": 37.7068,   # 50px south of previous (extended for 4:5 aspect ratio)
+    "lat_max": 37.8359,   # 124px north of previous (extended for 4:5 aspect ratio)
+    "lng_min": -122.5132, # proportionally trimmed: 0.1307° range for 4560px canvas
+    "lng_max": -122.3826, # proportionally trimmed: same pixel density as original 4960px
 }
 
-# Print canvas: 16x18" @ 300 DPI (standard print size)
-CANVAS_WIDTH_PX  = 4800   # 16" at 300 DPI
-CANVAS_HEIGHT_PX = 5400   # 18" at 300 DPI
+# Print canvas: 16x20" aspect ratio (4:5) — prints at ~285 DPI
+CANVAS_WIDTH_PX  = 4560   # 16" at 285 DPI
+CANVAS_HEIGHT_PX = 5700   # 20" at 285 DPI
 PRINT_DPI = 300
 
 # Density color ramp: (normalized_value, [R, G, B])
@@ -22,7 +22,7 @@ ROUTE_COLOR_RAMP = [
 
 # ── Line drawing ─────────────────────────────────────────────────────────────
 
-# Base stroke width in pixels at full 4800×5400 canvas.
+# Base stroke width in pixels at full 4560×5700 canvas.
 # Thicker = bolder single-run routes; hot-bloom + density-expand will still make
 # heavily-run corridors *appear* thicker even with a lower base value.
 #   16 = original (chunky)   12 = 25% thinner (current)
@@ -108,7 +108,7 @@ MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 #   16 = sharper detail (~600 tiles, 2–3 min first download)
 #   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
 # Set high (16–17) only when producing the final print file.
-MAP_TILE_ZOOM = 15
+MAP_TILE_ZOOM = 16
 
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 MAP_TILE_CACHE = "data/map_tile.png"
