@@ -59,7 +59,7 @@ Set `CANVAS_WIDTH_PX` and `CANVAS_HEIGHT_PX` so `WIDTH / HEIGHT ≈ aspect`. The
 - `PRINT_DPI` — DPI tag written to the PNG (affects print size, not pixel count).
 
 ### Color
-- `ROUTE_COLOR_RAMP` — list of `(t, [R, G, B])` stops. `t` is a normalized density value [0, 1] *after* gamma. With `GAMMA=0.4`, a single-run route lands around `t ≈ 0.45`, so set the first stop there to control the lowest visible color.
+- `ROUTE_COLOR_RAMP` — list of `(t, [R, G, B])` stops. `t` is a normalized density value [0, 1] after log1p compression and gamma. With `GAMMA=0.4`, a single-run route lands around `t ≈ 0.45`, so set the first stop there to control the lowest visible color.
 - `BG_COLOR` — background RGB.
 
 ### Line drawing
@@ -78,7 +78,7 @@ Set `CANVAS_WIDTH_PX` and `CANVAS_HEIGHT_PX` so `WIDTH / HEIGHT ≈ aspect`. The
 - `HOT_BLOOM_STRENGTH` — screen-blend intensity of the bloom layer.
 
 ### Map
-- `MAP_TILE_ZOOM` — tile zoom level. 16 = default (~600 tiles). 17 = sharper (~2400 tiles, slow first download).
+- `MAP_TILE_ZOOM` — tile zoom level. 16 = default (~600 tiles). 17 = sharper (~2400 tiles, slow first download). Note: `export.py` currently hardcodes zoom 15 (full render) and 11 (preview) — editing this config value has no effect unless you also update `export.py`.
 - `MAP_TILE_OPACITY` — how much the street grid shows through (0 = invisible, 1 = full).
 
 ## Key implementation notes
@@ -87,7 +87,7 @@ Set `CANVAS_WIDTH_PX` and `CANVAS_HEIGHT_PX` so `WIDTH / HEIGHT ≈ aspect`. The
 
 **Bloom is disabled in `export.py`**: The `--no-bloom` flag in `export.py` always passes `bloom=False` to `to_image()`. Regular bloom was removed as it caused halos on single isolated pixels. `hot_bloom` is kept — it fires only above `HOT_BLOOM_THRESHOLD`.
 
-**Density expand pass order** in `renderer.to_image()`: rasterize → density expand (Gaussian thickening) → gamma → color map → hot bloom → grain → vignette. Density expand runs on the raw float canvas before gamma so it operates in linear density space.
+**Density expand pass order** in `renderer.to_image()`: rasterize → log1p normalize → gamma → density expand (Gaussian thickening) → hot bloom → color map → grain → vignette. Density expand runs after gamma on the gamma-corrected normalized canvas.
 
 **Token refresh** (`src/fetcher.py:_update_env_tokens`): when the access token expires mid-fetch, `StravaClient.refresh_access_token()` POSTs to Strava and writes the new tokens back to `.env` in-place. It only updates existing lines — auth.py must have written them first.
 
