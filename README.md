@@ -38,7 +38,7 @@ cp .env.example .env
 python auth.py
 ```
 
-Your browser opens the Strava authorization page. Click **Authorize**. The page redirects to localhost and shows "Auth successful" — your tokens are saved to `.env` automatically. Come back to the terminal; you'll see:
+Your browser opens the Strava authorization page. Click **Authorize**. The page redirects to localhost and shows "Auth successful! You can close this tab." — your tokens are saved to `.env` automatically. Come back to the terminal; you'll see:
 
 ```
 ✓ Auth complete. Tokens saved to .env
@@ -94,16 +94,18 @@ merc_range     = merc_max - merc_min
 aspect_ratio   = lng_range_rad / merc_range   ← width/height
 ```
 
-Then set canvas dimensions that match this ratio at your target print size (e.g. 16×20" at 285 DPI = 4560×5700px for a 0.8 ratio):
+Then set canvas dimensions that match this ratio at your target print size (e.g. 16×20" at ~285 DPI = 4680×5850px for a 0.8 ratio):
 
 ```python
-CANVAS_WIDTH_PX  = 4560
-CANVAS_HEIGHT_PX = 5700   # CANVAS_WIDTH_PX / aspect_ratio
+CANVAS_WIDTH_PX  = 4680
+CANVAS_HEIGHT_PX = 5850   # CANVAS_WIDTH_PX / aspect_ratio
 ```
 
 **3. Activity filter**
 
 `src/processor.py:filter_sf_runs()` filters activities whose centroid falls inside `SF_BOUNDS` — it automatically uses your updated bounds, no code change needed.
+
+> **Note:** The variable `SF_BOUNDS` is just a name — you don't need to rename it. If you do rename it in `config.py`, also update the import in `src/processor.py` (`from config import SF_BOUNDS`).
 
 ## Tweaking visuals
 
