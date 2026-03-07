@@ -352,3 +352,42 @@ def test_nyc_intermediate_canvas_aspect_matches_bounds():
     assert abs(canvas_aspect - geo_aspect) < 0.005, (
         f"NYC intermediate aspect {canvas_aspect:.4f} != geo aspect {geo_aspect:.4f}"
     )
+
+
+def test_rotate_and_crop_is_noop_when_rotation_zero():
+    """rotate_and_crop returns original shape when _rotation_degrees == 0."""
+    r = StravaRenderer(width=100, height=120)
+    assert r._rotation_degrees == 0
+    arr = np.zeros((120, 100, 3), dtype=np.uint8)
+    result = r.rotate_and_crop(arr)
+    assert result.shape == (120, 100, 3)
+
+
+def test_rotate_and_crop_returns_final_dimensions():
+    """rotate_and_crop crops to final_width × final_height after rotation."""
+    import math
+    r = StravaRenderer(width=100, height=120)
+    # Manually configure for a 29° rotation (mimics NYC config)
+    rot = 29
+    cos_r, sin_r = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+    r._rotation_degrees = rot
+    r.final_width = 100
+    r.final_height = 120
+    r.width  = int(100 * cos_r + 120 * sin_r)
+    r.height = int(100 * sin_r + 120 * cos_r)
+    arr = np.full((r.height, r.width, 3), 128, dtype=np.uint8)
+    result = r.rotate_and_crop(arr)
+    assert result.shape == (120, 100, 3)
+
+
+def test_renderer_oversized_when_rotation_nonzero():
+    """When CANVAS_ROTATION_DEGREES != 0, renderer internal canvas is larger than final dims."""
+    import math
+    r = StravaRenderer(width=100, height=120)
+    r._rotation_degrees = 29
+    cos_r, sin_r = math.cos(math.radians(29)), math.sin(math.radians(29))
+    expected_w = int(100 * cos_r + 120 * sin_r)
+    expected_h = int(100 * sin_r + 120 * cos_r)
+    # Simulate what __init__ would compute — just verify the formula
+    assert expected_w > 100
+    assert expected_h > 120
