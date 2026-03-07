@@ -36,7 +36,7 @@ def _load_font(font_path, size):
 
 
 def render_typography(img, sf_runs, font_path,
-                      text_color=(255, 255, 255)):
+                      text_color=(255, 255, 255), scale=1.0, width_scale=1.0, x_offset=0):
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
     All four lines use the same font size, right-aligned in the bottom-right corner.
@@ -52,10 +52,10 @@ def render_typography(img, sf_runs, font_path,
     total_elev = f"{total_elev_ft:,.0f} ft \u2191"
 
     w, h = img.size
-    font_size = max(10, h // 40)     # ~143px at 5700, 14px at 570
-    margin = max(10, h // 25)        # ~228px at 5700, 23px at 570
-    shadow_offset = max(2, h // 1800)
-    line_gap = max(8, h // 120)      # ~48px at 5700, 8px at 570
+    font_size = int(max(10, h // 40) * scale * width_scale)
+    margin = int(max(10, h // 25) * scale)
+    shadow_offset = int(max(2, h // 1800) * scale)
+    line_gap = int(max(8, h // 120) * scale)
 
     draw = ImageDraw.Draw(img)
     font = _load_font(font_path, font_size)
@@ -73,7 +73,7 @@ def render_typography(img, sf_runs, font_path,
         bbox = draw.textbbox((0, 0), text, font=f)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
-        x = w - margin - text_w
+        x = w - margin - text_w + x_offset
         y -= text_h
         draw.text((x + shadow_offset, y + shadow_offset), text, font=f, fill=shadow)
         draw.text((x, y), text, font=f, fill=text_color)
@@ -83,7 +83,8 @@ def render_typography(img, sf_runs, font_path,
 
 
 def render_legend(img, color_ramp, font_path,
-                  text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None):
+                  text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None,
+                  scale=1.0, position="center", width_scale=1.0):
     """
     Draw a horizontal color gradient bar centered on the typography text block.
 
@@ -95,21 +96,24 @@ def render_legend(img, color_ramp, font_path,
     Args:
         gamma:           Same gamma used in renderer.to_image().
         canvas_max_val:  renderer.canvas.max() after rasterize_all().
+        scale:           Overall size multiplier (e.g. 0.3 for NYC).
+        position:        "center" (default) or "left" — horizontal placement of bar.
+        width_scale:     Additional bar-width multiplier (e.g. 0.7 = 30% narrower).
     """
     import math
     w, h = img.size
-    font_size  = max(9,  h * 3 // 200)    # 1.5× was max(6, h // 100)
-    margin     = max(10, h // 25)
-    bar_height = max(6,  h * 3 // 400)    # 1.5× was max(4, h // 200)
-    bar_width  = max(120, w * 3 // 8)     # 1.5× was max(80, w // 4)
-    label_gap  = max(6,  h // 200)        # 1.5× was max(4, h // 300)
+    font_size  = int(max(9,  h * 3 // 200) * scale)
+    margin     = int(max(10, h // 25) * scale)
+    bar_height = int(max(6,  h * 3 // 400) * scale)
+    bar_width  = int(max(120, w * 3 // 8) * scale * width_scale)
+    label_gap  = int(max(6,  h // 200) * scale)
 
     font = _load_font(font_path, font_size)
     draw = ImageDraw.Draw(img)
 
     # Vertical: center legend on the midpoint of the 4-line typography block
-    main_font_size = max(10, h // 40)
-    main_line_gap  = max(8,  h // 120)
+    main_font_size = int(max(10, h // 40) * scale)
+    main_line_gap  = int(max(8,  h // 120) * scale)
     block_top    = h - margin - 4 * main_font_size - 3 * main_line_gap
     block_bottom = h - margin
     block_mid_y  = (block_top + block_bottom) // 2
@@ -117,8 +121,11 @@ def render_legend(img, color_ramp, font_path,
     bar_top      = block_mid_y - legend_h // 2
     bar_bottom   = bar_top + bar_height
 
-    # Horizontal: centered
-    bar_left  = (w - bar_width) // 2
+    # Horizontal: centered or left-aligned
+    if position == "left":
+        bar_left = margin
+    else:
+        bar_left  = (w - bar_width) // 2
     bar_right = bar_left + bar_width
 
     # t_min: the ramp position a single-run route produces after log+gamma

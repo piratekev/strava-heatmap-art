@@ -344,7 +344,9 @@ def test_nyc_intermediate_canvas_aspect_matches_bounds():
 
     rot_rad = math.radians(nyc.CANVAS_ROTATION_DEGREES)
     cos_r, sin_r = math.cos(rot_rad), math.sin(rot_rad)
-    W, H = nyc.CANVAS_WIDTH_PX, nyc.CANVAS_HEIGHT_PX
+    # Use CANVAS_RENDER_WIDTH/HEIGHT when set — these drive the intermediate canvas scale.
+    W = nyc.CANVAS_RENDER_WIDTH  or nyc.CANVAS_WIDTH_PX
+    H = nyc.CANVAS_RENDER_HEIGHT or nyc.CANVAS_HEIGHT_PX
     render_w = W * cos_r + H * sin_r
     render_h = W * sin_r + H * cos_r
     canvas_aspect = render_w / render_h

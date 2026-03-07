@@ -67,8 +67,10 @@ Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediat
 
 ### Canvas & bounds
 - `CITY_BOUNDS` — geographic bounding box. All projection math derives from this.
-- `CANVAS_WIDTH_PX` / `CANVAS_HEIGHT_PX` — output canvas in pixels. Must match Mercator aspect ratio of `CITY_BOUNDS` (or satisfy the rotation constraint when `CANVAS_ROTATION_DEGREES != 0`).
-- `CANVAS_ROTATION_DEGREES` — degrees clockwise to rotate the final output. `0` = north-up (SF default). `29` = Manhattan-axis-up (NYC). When non-zero, renderer uses an oversized intermediate canvas and `rotate_and_crop()` is called in `export.py` after compositing.
+- `CANVAS_WIDTH_PX` / `CANVAS_HEIGHT_PX` — final output canvas in pixels. When rotation is 0, must match Mercator aspect ratio of `CITY_BOUNDS`. When rotation != 0, this is the post-crop size; aspect ratio is enforced on the intermediate canvas instead.
+- `CANVAS_ROTATION_DEGREES` — degrees counterclockwise to rotate the final output (cv2 convention). `0` = north-up (SF default). `29` = Manhattan-axis-up (NYC). When non-zero, renderer uses an oversized intermediate canvas and `rotate_and_crop()` is called in `export.py` after compositing.
+- `CANVAS_RENDER_WIDTH` / `CANVAS_RENDER_HEIGHT` — intermediate (pre-rotation) canvas dimensions. `None` = use `CANVAS_WIDTH_PX` / `CANVAS_HEIGHT_PX` (no rotation). When set, the geo aspect ratio constraint applies to these dimensions, not the final canvas.
+- `CANVAS_CROP_X` / `CANVAS_CROP_Y` — top-left pixel of the crop in the rotated intermediate canvas. `None` = centered crop. Set in city configs for non-centered framing (e.g. NYC trims more from the right than the left).
 - `PRINT_DPI` — DPI tag written to the PNG (affects print size, not pixel count).
 
 ### Color
@@ -89,6 +91,13 @@ Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediat
 - `HOT_BLOOM_THRESHOLD` — density cutoff (post-gamma) to trigger hot bloom. With `GAMMA=0.4`, keep this at 0.75+ to avoid bloom firing on medium routes.
 - `HOT_BLOOM_SIGMA_MULT` — width of bloom Gaussian as a multiplier of `bloom_sigma_wide` in renderer.
 - `HOT_BLOOM_STRENGTH` — screen-blend intensity of the bloom layer.
+
+### Typography & legend
+- `TYPOGRAPHY_SCALE` — overall size multiplier for all text and legend elements. `1.0` = SF default. Set smaller (e.g. `0.7`) for city configs with different canvas proportions.
+- `TYPOGRAPHY_WIDTH_SCALE` — additional font-size multiplier applied on top of `TYPOGRAPHY_SCALE`. Narrows the text block without changing vertical spacing.
+- `TYPOGRAPHY_X_OFFSET` — horizontal pixel offset for the text block in final canvas coordinates. Positive = toward right edge, negative = toward left. Scaled by the preview factor in `export.py` so it behaves correctly at both preview and full resolution.
+- `LEGEND_POSITION` — horizontal placement of the color legend bar: `"center"` (default, centered on canvas) or `"left"` (margin-aligned to left edge).
+- `LEGEND_WIDTH_SCALE` — additional width multiplier for the legend bar, applied on top of `TYPOGRAPHY_SCALE`. `1.0` = no change. `0.8` = 20% narrower.
 
 ### Map
 - `MAP_TILE_ZOOM` — tile zoom level. 16 = default (~600 tiles). 17 = sharper (~2400 tiles, slow first download). Note: `export.py` currently hardcodes zoom 15 (full render) and 11 (preview) — editing this config value has no effect unless you also update `export.py`.

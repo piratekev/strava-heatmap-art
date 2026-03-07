@@ -5,6 +5,7 @@ import cv2
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 from config import (CITY_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, CANVAS_ROTATION_DEGREES,
+                    CANVAS_RENDER_WIDTH, CANVAS_RENDER_HEIGHT, CANVAS_CROP_X, CANVAS_CROP_Y,
                     ROUTE_COLOR_RAMP, BG_COLOR,
                     HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
                     ROUTE_LINE_THICKNESS, ROUTE_LINE_THICKNESS_50_BONUS, ROUTE_LINE_THICKNESS_10_BONUS,
@@ -52,19 +53,34 @@ class StravaRenderer:
         self.final_height = height
         self._rotation_degrees = CANVAS_ROTATION_DEGREES
 
+        if CANVAS_RENDER_WIDTH is not None:
+            # Scale factor from full-resolution to the requested size (e.g. 0.1 for preview).
+            # render_w/h drive the intermediate canvas size; they differ from final_width/height
+            # when a non-centered crop is in use (e.g. NYC config).
+            scale = width / CANVAS_WIDTH_PX if CANVAS_WIDTH_PX else 1.0
+            render_w = int(CANVAS_RENDER_WIDTH  * scale)
+            render_h = int(CANVAS_RENDER_HEIGHT * scale)
+            self._crop_x = int(CANVAS_CROP_X * scale) if CANVAS_CROP_X is not None else None
+            self._crop_y = int(CANVAS_CROP_Y * scale) if CANVAS_CROP_Y is not None else None
+        else:
+            render_w = width
+            render_h = height
+            self._crop_x = None
+            self._crop_y = None
+
         if CANVAS_ROTATION_DEGREES != 0:
             cos_r = math.cos(math.radians(CANVAS_ROTATION_DEGREES))
             sin_r = math.sin(math.radians(CANVAS_ROTATION_DEGREES))
-            self.width  = int(width  * cos_r + height * sin_r)
-            self.height = int(width  * sin_r + height * cos_r)
+            self.width  = int(render_w * cos_r + render_h * sin_r)
+            self.height = int(render_w * sin_r + render_h * cos_r)
             self.bounds = _expand_bounds(
                 CITY_BOUNDS,
-                lng_scale=self.width  / width,
-                lat_scale=self.height / height,
+                lng_scale=self.width  / render_w,
+                lat_scale=self.height / render_h,
             )
         else:
-            self.width  = width
-            self.height = height
+            self.width  = render_w
+            self.height = render_h
             self.bounds = CITY_BOUNDS.copy()
 
         self.canvas = np.zeros((self.height, self.width), dtype=np.float32)
@@ -172,10 +188,10 @@ class StravaRenderer:
         if self._rotation_degrees == 0:
             return img_array
         h, w = img_array.shape[:2]
-        M = cv2.getRotationMatrix2D((w / 2, h / 2), -self._rotation_degrees, 1.0)
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), self._rotation_degrees, 1.0)
         rotated = cv2.warpAffine(img_array, M, (w, h))
-        y0 = (h - self.final_height) // 2
-        x0 = (w - self.final_width)  // 2
+        x0 = self._crop_x if self._crop_x is not None else (w - self.final_width)  // 2
+        y0 = self._crop_y if self._crop_y is not None else (h - self.final_height) // 2
         return rotated[y0:y0 + self.final_height, x0:x0 + self.final_width]
 
     def to_image(self, bloom=True, bloom_sigma_tight=4.0, bloom_sigma_wide=16.0,

@@ -12,6 +12,37 @@ CANVAS_HEIGHT_PX = 5850   # 4680/0.8 = 5850 for 4:5 ratio
 PRINT_DPI = 285
 CANVAS_ROTATION_DEGREES = 0  # degrees clockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
 
+# Optional: decouple intermediate canvas scale from final output dimensions.
+# When set, the intermediate canvas is computed from these dimensions instead of
+# CANVAS_WIDTH_PX / CANVAS_HEIGHT_PX, allowing a non-centered crop without
+# changing the geographic scale. None = use CANVAS_WIDTH_PX / CANVAS_HEIGHT_PX.
+CANVAS_RENDER_WIDTH  = None
+CANVAS_RENDER_HEIGHT = None
+
+# Optional: top-left pixel of the crop in the rotated intermediate canvas.
+# None = centered crop (default). Set in city configs when a non-centered crop is needed.
+CANVAS_CROP_X = None
+CANVAS_CROP_Y = None
+
+# Scale factor applied to all typography sizes and margins (font size, margin, bar width, etc.).
+# 1.0 = default (sized for SF). Set < 1 for configs with different canvas proportions (e.g. NYC).
+TYPOGRAPHY_SCALE = 1.0
+
+# Additional font-size multiplier applied on top of TYPOGRAPHY_SCALE to narrow the text block.
+# 1.0 = no change. 0.7 = text 30% less wide (and tall).
+TYPOGRAPHY_WIDTH_SCALE = 1.0
+
+# Horizontal pixel offset applied to the text block (positive = toward right edge).
+# 0 = default (right-aligned with margin). Set in city configs to fine-tune placement.
+TYPOGRAPHY_X_OFFSET = 0
+
+# Where to position the legend bar horizontally: "center" (default) or "left".
+LEGEND_POSITION = "center"
+
+# Additional width multiplier for the legend bar, applied on top of TYPOGRAPHY_SCALE.
+# 1.0 = no change. 0.7 = bar 30% less wide.
+LEGEND_WIDTH_SCALE = 1.0
+
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
@@ -109,7 +140,7 @@ MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 #   16 = current default — sharper detail (~600 tiles, 2–3 min first download)
 #   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
 # Set high (16–17) only when producing the final print file.
-MAP_TILE_ZOOM = 16
+MAP_TILE_ZOOM = 15
 
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 MAP_TILE_CACHE = "data/map_tile.png"

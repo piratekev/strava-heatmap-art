@@ -43,6 +43,8 @@ from config import (
     MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
     ROUTE_COLOR_RAMP, GAMMA, PRINT_DPI,
+    TYPOGRAPHY_SCALE, TYPOGRAPHY_WIDTH_SCALE, TYPOGRAPHY_X_OFFSET,
+    LEGEND_POSITION, LEGEND_WIDTH_SCALE,
 )
 
 
@@ -128,9 +130,13 @@ def main():
 
     # Typography at final dimensions
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
-    img = render_typography(img, city_runs, font_path=MAP_FONT_PATH)
+    img = render_typography(img, city_runs, font_path=MAP_FONT_PATH,
+                            scale=TYPOGRAPHY_SCALE, width_scale=TYPOGRAPHY_WIDTH_SCALE,
+                            x_offset=int(TYPOGRAPHY_X_OFFSET * scale))
     img = render_legend(img, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
-                        gamma=GAMMA, canvas_max_val=canvas_max_val)
+                        gamma=GAMMA, canvas_max_val=canvas_max_val,
+                        scale=TYPOGRAPHY_SCALE, position=LEGEND_POSITION,
+                        width_scale=LEGEND_WIDTH_SCALE)
 
     # Save
     if args.output:

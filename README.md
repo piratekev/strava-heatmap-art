@@ -80,8 +80,8 @@ CITY_BOUNDS = {
     "lng_max": -73.730,
 }
 
-CANVAS_WIDTH_PX  = 4800
-CANVAS_HEIGHT_PX = 5800
+CANVAS_WIDTH_PX  = 1740   # final output width (after crop)
+CANVAS_HEIGHT_PX = 5000   # final output height (after crop)
 MAP_TILE_CACHE = "data/map_tile_nyc.png"
 ```
 
@@ -91,7 +91,7 @@ Then render with:
 python export.py --config nyc
 ```
 
-NYC comes pre-configured — `nyc_config.py` is included and uses a 29° rotation so Manhattan's street grid runs vertically.
+NYC comes pre-configured — `nyc_config.py` is included and uses a 29° rotation so Manhattan's street grid runs vertically, with a non-centered crop to frame the borough.
 
 **To configure your own city:**
 
@@ -107,6 +107,8 @@ aspect_ratio   = lng_range_rad / (merc_max - merc_min)   ← width/height
 ```
 
 Set `CANVAS_WIDTH_PX` and `CANVAS_HEIGHT_PX` so `WIDTH / HEIGHT ≈ aspect_ratio`.
+
+**With rotation** (`CANVAS_ROTATION_DEGREES != 0`): set `CANVAS_RENDER_WIDTH` / `CANVAS_RENDER_HEIGHT` to the intermediate (pre-rotation) canvas dimensions that satisfy the aspect ratio, and set `CANVAS_WIDTH_PX` / `CANVAS_HEIGHT_PX` to your desired final crop size. Use `CANVAS_CROP_X` / `CANVAS_CROP_Y` to shift the crop origin away from center.
 
 **3. Activity filter** — `src/processor.py:filter_sf_runs()` filters by `CITY_BOUNDS` automatically — no code change needed.
 
