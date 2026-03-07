@@ -42,7 +42,7 @@ Your browser opens the Strava authorization page. Click **Authorize**. The page 
 
 ```
 ✓ Auth complete. Tokens saved to .env
-  Athlete: Jane Smith
+  Athlete: Kev Ay
   Run: python export.py --fetch
 ```
 
