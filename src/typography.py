@@ -105,7 +105,7 @@ def render_legend(img, color_ramp, font_path,
     font_size  = int(max(9,  h * 3 // 200) * scale)
     margin     = int(max(10, h // 25) * scale)
     bar_height = int(max(6,  h * 3 // 400) * scale)
-    bar_width  = int(max(120, w * 3 // 8) * scale * width_scale)
+    bar_width  = int(max(120, w * 3 // 8) * width_scale)
     label_gap  = int(max(6,  h // 200) * scale)
 
     font = _load_font(font_path, font_size)

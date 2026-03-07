@@ -41,9 +41,9 @@ MAP_TILE_CACHE = "data/map_tile_nyc.png"
 # Typography is designed for the SF canvas proportions. Scale down for NYC.
 TYPOGRAPHY_SCALE = .7
 
-# Legend: left-aligned and 30% narrower than the already-scaled width.
+# Legend: left-aligned; bar_width no longer shrinks with TYPOGRAPHY_SCALE.
 LEGEND_POSITION   = "left"
-LEGEND_WIDTH_SCALE = .8
+LEGEND_WIDTH_SCALE = 1.0
 
 # Text block: 30% narrower (smaller font = narrower lines).
 TYPOGRAPHY_WIDTH_SCALE = .7

@@ -273,3 +273,38 @@ def test_download_font_redownloads_corrupt_file(tmp_path):
     # File should now contain the downloaded content
     with open(font_path, "rb") as f:
         assert len(f.read()) == 100_000
+
+
+def test_render_legend_bar_width_not_shrunk_by_typography_scale(tmp_path):
+    """bar_width must not be further shrunk when scale (TYPOGRAPHY_SCALE) < 1.
+
+    A city config with TYPOGRAPHY_SCALE=0.7 should produce the same bar-width
+    *proportion* (bar_width / canvas_width) as scale=1.0, since bar_width is
+    already derived from canvas width w.
+    """
+    font_path = str(tmp_path / "f.ttf")
+
+    def bar_proportion(scale_val):
+        W = 400
+        img = Image.new("RGB", (W, 500), color=(0, 0, 0))
+        before = np.array(img).copy()
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+            render_legend(img, color_ramp=_RAMP, font_path=font_path, scale=scale_val)
+        after = np.array(img)
+        diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
+        # Count columns in the bottom quarter that changed — bar lives near the bottom
+        h, w = diff.shape
+        center_cols = diff[3 * h // 4:, :]
+        changed_cols = np.where(center_cols.sum(axis=0) > 0)[0]
+        if len(changed_cols) == 0:
+            return 0.0
+        return (changed_cols[-1] - changed_cols[0]) / W
+
+    prop_full  = bar_proportion(scale_val=1.0)
+    prop_nyc   = bar_proportion(scale_val=0.7)
+
+    # Proportions should be within 5% of each other (not 30% smaller as before)
+    assert abs(prop_full - prop_nyc) < 0.05, (
+        f"scale=1.0 → {prop_full:.2f}, scale=0.7 → {prop_nyc:.2f}; "
+        f"bar_width must not shrink with TYPOGRAPHY_SCALE"
+    )
