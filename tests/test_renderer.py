@@ -328,3 +328,27 @@ def test_sf_bounds_aspect_ratio_matches_canvas():
         f"Mercator aspect ratio {actual_ratio:.4f} does not match "
         f"canvas ratio {target_ratio:.4f} (tolerance 0.005)"
     )
+
+
+def test_nyc_intermediate_canvas_aspect_matches_bounds():
+    """NYC intermediate canvas (pre-rotation) must match the Mercator aspect ratio of CITY_BOUNDS."""
+    import math
+    import importlib
+    nyc = importlib.import_module("nyc_config")
+
+    b = nyc.CITY_BOUNDS
+    lng_range_rad = (b["lng_max"] - b["lng_min"]) * math.pi / 180
+    merc_max = math.asinh(math.tan(math.radians(b["lat_max"])))
+    merc_min = math.asinh(math.tan(math.radians(b["lat_min"])))
+    geo_aspect = lng_range_rad / (merc_max - merc_min)
+
+    rot_rad = math.radians(nyc.CANVAS_ROTATION_DEGREES)
+    cos_r, sin_r = math.cos(rot_rad), math.sin(rot_rad)
+    W, H = nyc.CANVAS_WIDTH_PX, nyc.CANVAS_HEIGHT_PX
+    render_w = W * cos_r + H * sin_r
+    render_h = W * sin_r + H * cos_r
+    canvas_aspect = render_w / render_h
+
+    assert abs(canvas_aspect - geo_aspect) < 0.005, (
+        f"NYC intermediate aspect {canvas_aspect:.4f} != geo aspect {geo_aspect:.4f}"
+    )
