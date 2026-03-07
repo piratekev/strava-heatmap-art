@@ -306,6 +306,12 @@ def test_project_uses_mercator_y():
     assert abs(y - 270) < 2  # should be very close to canvas center
 
 
+def test_canvas_rotation_degrees_exists_and_defaults_to_zero():
+    """SF config must define CANVAS_ROTATION_DEGREES = 0."""
+    from config import CANVAS_ROTATION_DEGREES
+    assert CANVAS_ROTATION_DEGREES == 0
+
+
 def test_sf_bounds_aspect_ratio_matches_canvas():
     """CITY_BOUNDS Mercator aspect ratio must match canvas pixel ratio (4:5 = 0.8)."""
     from config import CITY_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
