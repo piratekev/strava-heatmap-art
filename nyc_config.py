@@ -50,3 +50,5 @@ TYPOGRAPHY_WIDTH_SCALE = .7
 
 # Horizontal offset for the text block in final canvas pixels (positive = toward right edge).
 TYPOGRAPHY_X_OFFSET = -400
+
+SHOW_ELEVATION = False

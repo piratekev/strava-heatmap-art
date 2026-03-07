@@ -43,6 +43,10 @@ LEGEND_POSITION = "center"
 # 1.0 = no change. 0.7 = bar 30% less wide.
 LEGEND_WIDTH_SCALE = 1.0
 
+# Show or hide elevation gain in the typography block.
+# True = show (SF default). False = hide (e.g. NYC).
+SHOW_ELEVATION = True
+
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
