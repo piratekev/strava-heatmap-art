@@ -1,13 +1,35 @@
+import math
 import os
 import numpy as np
 import cv2
 from PIL import Image
 from scipy.ndimage import gaussian_filter
-from config import (SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR,
+from config import (CITY_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, CANVAS_ROTATION_DEGREES,
+                    ROUTE_COLOR_RAMP, BG_COLOR,
                     HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
                     ROUTE_LINE_THICKNESS, ROUTE_LINE_THICKNESS_50_BONUS, ROUTE_LINE_THICKNESS_10_BONUS,
                     DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH,
                     DENSITY_EXPAND_POWER, GAMMA)
+
+
+def _expand_bounds(bounds, lng_scale, lat_scale):
+    """Expand geographic bounds by scale factors around their center (in Mercator space)."""
+    lng_center = (bounds["lng_min"] + bounds["lng_max"]) / 2
+    half_lng = (bounds["lng_max"] - bounds["lng_min"]) / 2 * lng_scale
+
+    lat_min_rad = math.radians(bounds["lat_min"])
+    lat_max_rad = math.radians(bounds["lat_max"])
+    merc_min = math.asinh(math.tan(lat_min_rad))
+    merc_max = math.asinh(math.tan(lat_max_rad))
+    merc_center = (merc_min + merc_max) / 2
+    half_merc = (merc_max - merc_min) / 2 * lat_scale
+
+    return {
+        "lat_min": math.degrees(math.atan(math.sinh(merc_center - half_merc))),
+        "lat_max": math.degrees(math.atan(math.sinh(merc_center + half_merc))),
+        "lng_min": lng_center - half_lng,
+        "lng_max": lng_center + half_lng,
+    }
 
 
 def _ramp_colors(norm, ramp):
@@ -26,10 +48,26 @@ def _ramp_colors(norm, ramp):
 
 class StravaRenderer:
     def __init__(self, width=CANVAS_WIDTH_PX, height=CANVAS_HEIGHT_PX):
-        self.width = width
-        self.height = height
-        self.canvas = np.zeros((height, width), dtype=np.float32)
-        self.bounds = SF_BOUNDS.copy()  # default; overridden by set_bounds()
+        self.final_width = width
+        self.final_height = height
+        self._rotation_degrees = CANVAS_ROTATION_DEGREES
+
+        if CANVAS_ROTATION_DEGREES != 0:
+            cos_r = math.cos(math.radians(CANVAS_ROTATION_DEGREES))
+            sin_r = math.sin(math.radians(CANVAS_ROTATION_DEGREES))
+            self.width  = int(width  * cos_r + height * sin_r)
+            self.height = int(width  * sin_r + height * cos_r)
+            self.bounds = _expand_bounds(
+                CITY_BOUNDS,
+                lng_scale=self.width  / width,
+                lat_scale=self.height / height,
+            )
+        else:
+            self.width  = width
+            self.height = height
+            self.bounds = CITY_BOUNDS.copy()
+
+        self.canvas = np.zeros((self.height, self.width), dtype=np.float32)
 
     def set_bounds(self, runs, padding=0.05):
         """Compute lat/lng extent from run coords and store with padding."""
@@ -125,6 +163,20 @@ class StravaRenderer:
         dist = np.sqrt(((x_idx - cx) / cx) ** 2 + ((y_idx - cy) / cy) ** 2)
         mask = 1 - strength * np.clip(dist, 0, 1)
         return mask.astype(np.float32)
+
+    def rotate_and_crop(self, img_array):
+        """Rotate by _rotation_degrees and crop to final_width × final_height.
+        Returns img_array unchanged when _rotation_degrees == 0.
+        img_array must be HxWx3 uint8 or float32.
+        """
+        if self._rotation_degrees == 0:
+            return img_array
+        h, w = img_array.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), -self._rotation_degrees, 1.0)
+        rotated = cv2.warpAffine(img_array, M, (w, h))
+        y0 = (h - self.final_height) // 2
+        x0 = (w - self.final_width)  // 2
+        return rotated[y0:y0 + self.final_height, x0:x0 + self.final_width]
 
     def to_image(self, bloom=True, bloom_sigma_tight=4.0, bloom_sigma_wide=16.0,
                  bloom_strength=0.6, glow=True, glow_strength=1.0,

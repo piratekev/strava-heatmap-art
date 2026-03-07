@@ -9,7 +9,7 @@ Fetches a user's Strava running activities, filters them to a geographic boundin
 **Pipeline:**
 ```
 auth.py          → writes tokens to .env (run once)
-export.py        → orchestrates everything
+export.py        → orchestrates everything (--config sf|nyc selects city)
   src/fetcher.py → fetch & cache activities from Strava API
   src/processor.py → filter by city bounds + decode polylines
   src/renderer.py  → rasterize routes → post-process (bloom, grain, glow)
@@ -32,11 +32,13 @@ export.py        → orchestrates everything
 
 ## Adding a new city
 
-Four changes, all in `config.py` unless noted:
+The easiest approach is to create a `<city>_config.py` that inherits from `config.py` via `from config import *` and overrides the relevant values. Pass `--config <city>` to `export.py` to use it.
 
-**1. `SF_BOUNDS`** — update the four lat/lng values to your city's bounding box. Use [bboxfinder.com](http://bboxfinder.com).
+Four values to set in your city config:
 
-**2. Canvas dimensions** — the canvas pixel ratio must match the Mercator aspect ratio of the bounds or the map distorts. Formula:
+**1. `CITY_BOUNDS`** — update the four lat/lng values to your city's bounding box. Use [bboxfinder.com](http://bboxfinder.com).
+
+**2. Canvas dimensions** — the canvas pixel ratio must match the Mercator aspect ratio of the bounds or the map distorts. Formula (no rotation):
 
 ```python
 import math
@@ -47,15 +49,26 @@ aspect = lng_range / merc_range  # width / height
 
 Set `CANVAS_WIDTH_PX` and `CANVAS_HEIGHT_PX` so `WIDTH / HEIGHT ≈ aspect`. The test `test_sf_bounds_aspect_ratio_matches_canvas` in `tests/test_renderer.py` validates this — update the expected ratio if you change cities.
 
-**3. Activity filter** — `src/processor.py:filter_sf_runs()` uses `SF_BOUNDS` directly; no code change needed. The function name still says "sf" — rename it if you care.
+**With rotation** (`CANVAS_ROTATION_DEGREES != 0`): the *intermediate* (pre-rotation) canvas must match the geo aspect, not the final canvas. The constraint becomes:
 
-**4. Map tiles** — `src/tiles.py` derives tile coordinates from the renderer bounds (`renderer.bounds`), which come from `SF_BOUNDS`. No change needed.
+```
+render_w = W * cos(θ) + H * sin(θ)
+render_h = W * sin(θ) + H * cos(θ)
+render_w / render_h == geo_aspect
+```
+
+Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediate_canvas_aspect_matches_bounds`.
+
+**3. Activity filter** — `src/processor.py:filter_sf_runs()` uses `CITY_BOUNDS` directly; no code change needed. The function name still says "sf" — rename it if you care.
+
+**4. Map tiles** — `src/tiles.py` derives tile coordinates from the renderer bounds (`renderer.bounds`), which come from `CITY_BOUNDS`. No change needed.
 
 ## Config knobs reference
 
 ### Canvas & bounds
-- `SF_BOUNDS` — geographic bounding box. All projection math derives from this.
-- `CANVAS_WIDTH_PX` / `CANVAS_HEIGHT_PX` — output canvas in pixels. Must match Mercator aspect ratio of `SF_BOUNDS`.
+- `CITY_BOUNDS` — geographic bounding box. All projection math derives from this.
+- `CANVAS_WIDTH_PX` / `CANVAS_HEIGHT_PX` — output canvas in pixels. Must match Mercator aspect ratio of `CITY_BOUNDS` (or satisfy the rotation constraint when `CANVAS_ROTATION_DEGREES != 0`).
+- `CANVAS_ROTATION_DEGREES` — degrees clockwise to rotate the final output. `0` = north-up (SF default). `29` = Manhattan-axis-up (NYC). When non-zero, renderer uses an oversized intermediate canvas and `rotate_and_crop()` is called in `export.py` after compositing.
 - `PRINT_DPI` — DPI tag written to the PNG (affects print size, not pixel count).
 
 ### Color

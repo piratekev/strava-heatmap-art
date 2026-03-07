@@ -1,20 +1,36 @@
 #!/usr/bin/env python3
 """
-Generate and save the SF running heatmap poster.
+Generate a running heatmap poster from Strava data.
 
 Usage:
-    python export.py                 # full ~285 DPI render (PRINT_DPI)
-    python export.py --preview       # 1/10 scale for quick iteration
-    python export.py --fetch         # fetch new activities first
-    python export.py --no-map        # skip map background tile
+    python export.py                      # SF, full render
+    python export.py --config nyc         # NYC render
+    python export.py --preview            # 1/10 scale for quick iteration
+    python export.py --fetch              # fetch new activities first
+    python export.py --no-map
     python export.py --no-bloom --no-grain --no-glow
 """
 import argparse
+import importlib
 import json
 import os
 import sys
 from datetime import datetime
 from dotenv import load_dotenv
+
+# ── Config injection ──────────────────────────────────────────────────────────
+# Pre-parse --config before any pipeline imports so sys.modules["config"] is set
+# before src/* modules load and execute their own `from config import ...`.
+_pre = argparse.ArgumentParser(add_help=False)
+_pre.add_argument("--config", default="sf")
+_pre_args, _ = _pre.parse_known_args()
+
+if _pre_args.config != "sf":
+    sys.modules["config"] = importlib.import_module(f"{_pre_args.config}_config")
+# ─────────────────────────────────────────────────────────────────────────────
+
+import numpy as np
+from PIL import Image
 
 from src.fetcher import StravaClient, fetch_activities
 from src.processor import filter_sf_runs, decode_runs
@@ -28,8 +44,6 @@ from config import (
     MAP_FONT_PATH, MAP_FONT_URL,
     ROUTE_COLOR_RAMP, GAMMA, PRINT_DPI,
 )
-from PIL import Image
-import numpy as np
 
 
 def composite_map_background(tile_img, canvas_size, opacity, bg_color):
@@ -41,7 +55,8 @@ def composite_map_background(tile_img, canvas_size, opacity, bg_color):
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Generate SF running heatmap poster")
+    parser = argparse.ArgumentParser(description="Generate running heatmap poster")
+    parser.add_argument("--config", default="sf", help="Config to use: sf (default) or nyc")
     parser.add_argument("--fetch", action="store_true")
     parser.add_argument("--preview", action="store_true", help="1/10 scale for speed")
     parser.add_argument("--no-bloom", dest="bloom", action="store_false", default=True)
@@ -67,27 +82,28 @@ def main():
     with open("data/activities.json") as f:
         activities = json.load(f)
 
-    sf_runs = filter_sf_runs(activities)
-    runs = decode_runs(sf_runs)
-    print(f"Rendering {len(runs)} SF runs...")
+    city_runs = filter_sf_runs(activities)
+    runs = decode_runs(city_runs)
+    print(f"Rendering {len(runs)} runs...")
 
     scale = 0.1 if args.preview else 1.0
-    w = int(CANVAS_WIDTH_PX * scale)
+    w = int(CANVAS_WIDTH_PX * scale)   # final output dimensions
     h = int(CANVAS_HEIGHT_PX * scale)
 
     renderer = StravaRenderer(width=w, height=h)
     renderer.rasterize_all(runs)
     canvas_max_val = float(renderer.canvas.max())
 
+    # to_image() returns oversized array (renderer.width × renderer.height) when rotation != 0
     img_array = renderer.to_image(
         bloom=False, vignette=args.vignette, grain=args.grain,
         glow=args.glow, hot_bloom=args.hot_bloom, density_expand=args.density_expand
     )
     img = Image.fromarray(img_array, mode="RGB")
 
-    # Composite map background
+    # Composite map background at intermediate (oversized) dimensions
     if args.use_map:
-        from config import BG_COLOR, MAP_TILE_URL
+        from config import BG_COLOR
         cache = MAP_TILE_CACHE if not args.preview else MAP_TILE_CACHE.replace(".png", "-preview.png")
         zoom = 15 if not args.preview else 11
         try:
@@ -95,20 +111,24 @@ def main():
                 bounds=renderer.bounds,
                 zoom=zoom,
                 cache_path=cache,
-                target_size=(w, h),
+                target_size=(renderer.width, renderer.height),
                 url_template=MAP_TILE_URL,
             )
-            bg = composite_map_background(tile, (w, h), MAP_TILE_OPACITY, BG_COLOR)
+            bg = composite_map_background(tile, (renderer.width, renderer.height), MAP_TILE_OPACITY, BG_COLOR)
             bg_arr = np.array(bg, dtype=np.float32)
             route_arr = img_array.astype(np.float32)
             result = 255 - ((255 - bg_arr) * (255 - route_arr) / 255)
-            img = Image.fromarray(np.clip(result, 0, 255).astype(np.uint8), mode="RGB")
+            img_array = np.clip(result, 0, 255).astype(np.uint8)
         except Exception as e:
             print(f"Map tile skipped: {e}")
 
-    # Typography
+    # Rotate + crop to final dimensions (no-op when CANVAS_ROTATION_DEGREES == 0)
+    img_array = renderer.rotate_and_crop(img_array)
+    img = Image.fromarray(img_array, mode="RGB")
+
+    # Typography at final dimensions
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
-    img = render_typography(img, sf_runs, font_path=MAP_FONT_PATH)
+    img = render_typography(img, city_runs, font_path=MAP_FONT_PATH)
     img = render_legend(img, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
                         gamma=GAMMA, canvas_max_val=canvas_max_val)
 
@@ -119,7 +139,8 @@ def main():
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         suffix = "-preview" if args.preview else ""
-        out_path = os.path.join(OUTPUT_DIR, f"poster{suffix}-{ts}.png")
+        config_tag = f"-{_pre_args.config}" if _pre_args.config != "sf" else ""
+        out_path = os.path.join(OUTPUT_DIR, f"poster{config_tag}{suffix}-{ts}.png")
 
     dpi = 3 if args.preview else PRINT_DPI
     img.save(out_path, dpi=(dpi, dpi))

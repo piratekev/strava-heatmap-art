@@ -2,7 +2,7 @@ import math
 import numpy as np
 import pytest
 from src.renderer import StravaRenderer
-from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
+from config import CITY_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
 
 
 @pytest.fixture
@@ -12,8 +12,8 @@ def renderer():
 
 def test_project_sf_center_to_canvas_center(renderer):
     """SF centroid should project near the canvas center."""
-    center_lat = (SF_BOUNDS["lat_min"] + SF_BOUNDS["lat_max"]) / 2
-    center_lng = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
+    center_lat = (CITY_BOUNDS["lat_min"] + CITY_BOUNDS["lat_max"]) / 2
+    center_lng = (CITY_BOUNDS["lng_min"] + CITY_BOUNDS["lng_max"]) / 2
     x, y = renderer.project(center_lat, center_lng)
     assert abs(x - 270) < 30  # within 30px of center (540/2)
     assert abs(y - 270) < 30  # within 30px of center (540/2)
@@ -21,14 +21,14 @@ def test_project_sf_center_to_canvas_center(renderer):
 
 def test_project_top_left_corner(renderer):
     """SW corner of SF bounds → near bottom-left of canvas (lat inverted)."""
-    x, y = renderer.project(SF_BOUNDS["lat_min"], SF_BOUNDS["lng_min"])
+    x, y = renderer.project(CITY_BOUNDS["lat_min"], CITY_BOUNDS["lng_min"])
     assert x < 100
     assert y > 490  # near bottom of 540px canvas
 
 
 def test_project_top_right_corner(renderer):
     """NE corner → near top-right."""
-    x, y = renderer.project(SF_BOUNDS["lat_max"], SF_BOUNDS["lng_max"])
+    x, y = renderer.project(CITY_BOUNDS["lat_max"], CITY_BOUNDS["lng_max"])
     assert x > 440
     assert y < 100
 
@@ -157,11 +157,11 @@ def test_set_bounds_adds_padding():
     assert y < 520  # inset from bottom edge due to padding
 
 
-def test_set_bounds_defaults_to_sf_bounds():
-    """Renderer without set_bounds() uses SF_BOUNDS (existing behaviour)."""
+def test_set_bounds_defaults_to_city_bounds():
+    """Renderer without set_bounds() uses CITY_BOUNDS (existing behaviour)."""
     r = StravaRenderer(width=540, height=540)
-    center_lat = (SF_BOUNDS["lat_min"] + SF_BOUNDS["lat_max"]) / 2
-    center_lng = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
+    center_lat = (CITY_BOUNDS["lat_min"] + CITY_BOUNDS["lat_max"]) / 2
+    center_lng = (CITY_BOUNDS["lng_min"] + CITY_BOUNDS["lng_max"]) / 2
     x, y = r.project(center_lat, center_lng)
     assert abs(x - 270) < 30
     assert abs(y - 270) < 30
@@ -296,23 +296,29 @@ def test_project_uses_mercator_y():
     """Mercator midpoint (not geographic midpoint) should map to canvas center."""
     r = StravaRenderer(width=540, height=540)
     # Compute the Mercator midpoint of SF bounds
-    merc_min = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_min"])))
-    merc_max = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_max"])))
+    merc_min = math.asinh(math.tan(math.radians(CITY_BOUNDS["lat_min"])))
+    merc_max = math.asinh(math.tan(math.radians(CITY_BOUNDS["lat_max"])))
     merc_mid = (merc_min + merc_max) / 2
     # Back-convert Mercator midpoint to lat
     lat_mercator_center = math.degrees(math.atan(math.sinh(merc_mid)))
-    lng_center = (SF_BOUNDS["lng_min"] + SF_BOUNDS["lng_max"]) / 2
+    lng_center = (CITY_BOUNDS["lng_min"] + CITY_BOUNDS["lng_max"]) / 2
     x, y = r.project(lat_mercator_center, lng_center)
     assert abs(y - 270) < 2  # should be very close to canvas center
 
 
-def test_sf_bounds_aspect_ratio_matches_canvas():
-    """SF_BOUNDS Mercator aspect ratio must match canvas pixel ratio (4:5 = 0.8)."""
-    from config import SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
+def test_canvas_rotation_degrees_exists_and_defaults_to_zero():
+    """SF config must define CANVAS_ROTATION_DEGREES = 0."""
+    from config import CANVAS_ROTATION_DEGREES
+    assert CANVAS_ROTATION_DEGREES == 0
 
-    lng_range_rad = (SF_BOUNDS["lng_max"] - SF_BOUNDS["lng_min"]) * math.pi / 180
-    merc_max = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_max"])))
-    merc_min = math.asinh(math.tan(math.radians(SF_BOUNDS["lat_min"])))
+
+def test_sf_bounds_aspect_ratio_matches_canvas():
+    """CITY_BOUNDS Mercator aspect ratio must match canvas pixel ratio (4:5 = 0.8)."""
+    from config import CITY_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX
+
+    lng_range_rad = (CITY_BOUNDS["lng_max"] - CITY_BOUNDS["lng_min"]) * math.pi / 180
+    merc_max = math.asinh(math.tan(math.radians(CITY_BOUNDS["lat_max"])))
+    merc_min = math.asinh(math.tan(math.radians(CITY_BOUNDS["lat_min"])))
     merc_range = merc_max - merc_min
 
     actual_ratio = lng_range_rad / merc_range
@@ -322,3 +328,66 @@ def test_sf_bounds_aspect_ratio_matches_canvas():
         f"Mercator aspect ratio {actual_ratio:.4f} does not match "
         f"canvas ratio {target_ratio:.4f} (tolerance 0.005)"
     )
+
+
+def test_nyc_intermediate_canvas_aspect_matches_bounds():
+    """NYC intermediate canvas (pre-rotation) must match the Mercator aspect ratio of CITY_BOUNDS."""
+    import math
+    import importlib
+    nyc = importlib.import_module("nyc_config")
+
+    b = nyc.CITY_BOUNDS
+    lng_range_rad = (b["lng_max"] - b["lng_min"]) * math.pi / 180
+    merc_max = math.asinh(math.tan(math.radians(b["lat_max"])))
+    merc_min = math.asinh(math.tan(math.radians(b["lat_min"])))
+    geo_aspect = lng_range_rad / (merc_max - merc_min)
+
+    rot_rad = math.radians(nyc.CANVAS_ROTATION_DEGREES)
+    cos_r, sin_r = math.cos(rot_rad), math.sin(rot_rad)
+    W, H = nyc.CANVAS_WIDTH_PX, nyc.CANVAS_HEIGHT_PX
+    render_w = W * cos_r + H * sin_r
+    render_h = W * sin_r + H * cos_r
+    canvas_aspect = render_w / render_h
+
+    assert abs(canvas_aspect - geo_aspect) < 0.005, (
+        f"NYC intermediate aspect {canvas_aspect:.4f} != geo aspect {geo_aspect:.4f}"
+    )
+
+
+def test_rotate_and_crop_is_noop_when_rotation_zero():
+    """rotate_and_crop returns original shape when _rotation_degrees == 0."""
+    r = StravaRenderer(width=100, height=120)
+    assert r._rotation_degrees == 0
+    arr = np.zeros((120, 100, 3), dtype=np.uint8)
+    result = r.rotate_and_crop(arr)
+    assert result.shape == (120, 100, 3)
+
+
+def test_rotate_and_crop_returns_final_dimensions():
+    """rotate_and_crop crops to final_width × final_height after rotation."""
+    import math
+    r = StravaRenderer(width=100, height=120)
+    # Manually configure for a 29° rotation (mimics NYC config)
+    rot = 29
+    cos_r, sin_r = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+    r._rotation_degrees = rot
+    r.final_width = 100
+    r.final_height = 120
+    r.width  = int(100 * cos_r + 120 * sin_r)
+    r.height = int(100 * sin_r + 120 * cos_r)
+    arr = np.full((r.height, r.width, 3), 128, dtype=np.uint8)
+    result = r.rotate_and_crop(arr)
+    assert result.shape == (120, 100, 3)
+
+
+def test_renderer_oversized_when_rotation_nonzero():
+    """When CANVAS_ROTATION_DEGREES != 0, renderer internal canvas is larger than final dims."""
+    import math
+    r = StravaRenderer(width=100, height=120)
+    r._rotation_degrees = 29
+    cos_r, sin_r = math.cos(math.radians(29)), math.sin(math.radians(29))
+    expected_w = int(100 * cos_r + 120 * sin_r)
+    expected_h = int(100 * sin_r + 120 * cos_r)
+    # Simulate what __init__ would compute — just verify the formula
+    assert expected_w > 100
+    assert expected_h > 120

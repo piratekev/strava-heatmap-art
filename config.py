@@ -1,5 +1,5 @@
 # San Francisco bounding box
-SF_BOUNDS = {
+CITY_BOUNDS = {
     "lat_min": 37.7068,     # unchanged
     "lat_max": 37.8392,     # extended northward to maintain Mercator 4:5 aspect ratio with wider lng
     "lng_min": -122.5152,   # extended west 20px at current pixel density (+20 × 0.00002863°/px)
@@ -10,6 +10,7 @@ SF_BOUNDS = {
 CANVAS_WIDTH_PX  = 4680   # was 4660 — +20px left side
 CANVAS_HEIGHT_PX = 5850   # 4680/0.8 = 5850 for 4:5 ratio
 PRINT_DPI = 285
+CANVAS_ROTATION_DEGREES = 0  # degrees clockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
 
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
