@@ -36,7 +36,8 @@ def _load_font(font_path, size):
 
 
 def render_typography(img, sf_runs, font_path,
-                      text_color=(255, 255, 255), scale=1.0, width_scale=1.0, x_offset=0):
+                      text_color=(255, 255, 255), scale=1.0, width_scale=1.0,
+                      x_offset=0, show_elevation=True):
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
     All four lines use the same font size, right-aligned in the bottom-right corner.
@@ -65,8 +66,9 @@ def render_typography(img, sf_runs, font_path,
         (year_range, font),
         (total_runs,  font),
         (total_dist,  font),
-        (total_elev,  font),
     ]
+    if show_elevation:
+        lines.append((total_elev, font))
 
     y = h - margin
     for text, f in reversed(lines):

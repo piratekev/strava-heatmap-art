@@ -275,6 +275,29 @@ def test_download_font_redownloads_corrupt_file(tmp_path):
         assert len(f.read()) == 100_000
 
 
+def test_render_typography_hides_elevation_when_disabled(tmp_path):
+    """When show_elevation=False, elevation text must not appear."""
+    font_path = str(tmp_path / "f.ttf")
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        with patch("PIL.ImageDraw.ImageDraw.text") as mock_text:
+            img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+            render_typography(img, _make_runs(n=10), font_path=font_path, show_elevation=False)
+            all_text = " ".join(str(c) for c in mock_text.call_args_list)
+            assert "ft" not in all_text
+            assert "↑" not in all_text
+
+
+def test_render_typography_shows_elevation_by_default(tmp_path):
+    """show_elevation defaults to True — elevation must appear without passing the param."""
+    font_path = str(tmp_path / "f.ttf")
+    with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        with patch("PIL.ImageDraw.ImageDraw.text") as mock_text:
+            img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+            render_typography(img, _make_runs(n=10), font_path=font_path)
+            all_text = " ".join(str(c) for c in mock_text.call_args_list)
+            assert "ft" in all_text
+
+
 def test_render_legend_bar_width_not_shrunk_by_typography_scale(tmp_path):
     """bar_width must not be further shrunk when scale (TYPOGRAPHY_SCALE) < 1.
 
