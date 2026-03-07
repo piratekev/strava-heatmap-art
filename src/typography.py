@@ -87,7 +87,7 @@ def render_typography(img, sf_runs, font_path,
 def render_legend(img, color_ramp, font_path,
                   text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None,
                   scale=1.0, position="center", width_scale=1.0,
-                  text_width_scale=1.0, show_elevation=True):
+                  text_width_scale=1.0, show_elevation=True, y_offset=0):
     """
     Draw a horizontal color gradient bar centered on the typography text block.
 
@@ -122,7 +122,7 @@ def render_legend(img, color_ramp, font_path,
     block_bottom = h - margin
     block_mid_y  = (block_top + block_bottom) // 2
     legend_h     = bar_height + label_gap + font_size
-    bar_top      = block_mid_y - legend_h // 2
+    bar_top      = block_mid_y - legend_h // 2 + y_offset
     bar_bottom   = bar_top + bar_height
 
     # Horizontal: centered or left-aligned

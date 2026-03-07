@@ -375,6 +375,28 @@ def test_render_legend_text_width_scale_affects_vertical_centering(tmp_path):
     )
 
 
+def test_render_legend_y_offset_shifts_position(tmp_path):
+    """Positive y_offset must move the legend bar downward (larger y coordinate)."""
+    font_path = str(tmp_path / "f.ttf")
+
+    def legend_mid_y(offset):
+        img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+        before = np.array(img).copy()
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+            render_legend(img, color_ramp=_RAMP, font_path=font_path, y_offset=offset)
+        after = np.array(img)
+        diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
+        rows = np.where(diff.sum(axis=1) > 0)[0]
+        return rows.mean() if len(rows) else 0
+
+    mid_zero     = legend_mid_y(0)
+    mid_positive = legend_mid_y(40)
+    mid_negative = legend_mid_y(-40)
+
+    assert mid_positive > mid_zero,   "positive y_offset must lower the legend"
+    assert mid_negative < mid_zero,   "negative y_offset must raise the legend"
+
+
 def test_render_legend_bar_width_not_shrunk_by_typography_scale(tmp_path):
     """bar_width must not be further shrunk when scale (TYPOGRAPHY_SCALE) < 1.
 

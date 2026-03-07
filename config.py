@@ -43,6 +43,10 @@ LEGEND_POSITION = "center"
 # 1.0 = no change. 0.7 = bar 30% less wide.
 LEGEND_WIDTH_SCALE = 1.0
 
+# Vertical pixel offset for the legend bar (positive = lower, negative = higher).
+# 0 = default (centered on text block). Adjust per city config for fine-tuning.
+LEGEND_Y_OFFSET = 0
+
 # Show or hide elevation gain in the typography block.
 # True = show (SF default). False = hide (e.g. NYC).
 SHOW_ELEVATION = True

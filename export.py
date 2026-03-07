@@ -45,7 +45,7 @@ from config import (
     ROUTE_COLOR_RAMP, GAMMA, PRINT_DPI,
     TYPOGRAPHY_SCALE, TYPOGRAPHY_WIDTH_SCALE, TYPOGRAPHY_X_OFFSET,
     LEGEND_POSITION, LEGEND_WIDTH_SCALE,
-    SHOW_ELEVATION,
+    SHOW_ELEVATION, LEGEND_Y_OFFSET,
 )
 
 
@@ -140,7 +140,8 @@ def main():
                         scale=TYPOGRAPHY_SCALE, position=LEGEND_POSITION,
                         width_scale=LEGEND_WIDTH_SCALE,
                         text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
-                        show_elevation=SHOW_ELEVATION)
+                        show_elevation=SHOW_ELEVATION,
+                        y_offset=LEGEND_Y_OFFSET)
 
     # Save
     if args.output:
