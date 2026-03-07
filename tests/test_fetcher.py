@@ -166,3 +166,13 @@ def test_get_headers_include_bearer_token():
     )
     headers = client._headers()
     assert headers["Authorization"] == "Bearer mytoken"
+
+
+def test_from_env_raises_key_error_when_tokens_missing(monkeypatch):
+    """StravaClient.from_env() raises KeyError if tokens not in env."""
+    for key in ("STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET",
+                "STRAVA_ACCESS_TOKEN", "STRAVA_REFRESH_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    with patch("dotenv.load_dotenv", return_value=False):
+        with pytest.raises(KeyError):
+            StravaClient.from_env()

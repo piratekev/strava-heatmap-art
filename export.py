@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import os
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -55,7 +56,12 @@ def main():
 
     if args.fetch:
         print("Fetching activities from Strava...")
-        client = StravaClient.from_env()
+        try:
+            client = StravaClient.from_env()
+        except KeyError as e:
+            print(f"ERROR: Missing token {e} in .env")
+            print("Run 'python auth.py' first to authenticate with Strava.")
+            sys.exit(1)
         fetch_activities(client)
 
     with open("data/activities.json") as f:
