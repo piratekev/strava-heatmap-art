@@ -68,6 +68,11 @@ python export.py
 python export.py --preview
 ```
 
+**NYC render:**
+```bash
+python export.py --config nyc
+```
+
 Output is saved to `output/poster-<timestamp>.png`.
 
 ## Adapting for a new city
