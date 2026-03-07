@@ -1,4 +1,4 @@
-# Strava Art
+# Strava Heatmap Art
 
 Generate a print-quality running heatmap poster from your Strava data.
 
@@ -15,7 +15,7 @@ Generate a print-quality running heatmap poster from your Strava data.
 
 ```bash
 git clone <this-repo>
-cd strava-art
+cd strava-heatmap-art
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env
