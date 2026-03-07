@@ -4,6 +4,10 @@ Generate a print-quality running heatmap poster from your Strava data.
 
 ![San Francisco running heatmap](sf.png)
 
+NYC is also pre-configured — optimized to show the full NYC Marathon course (Staten Island → Brooklyn → Queens → Bronx → Manhattan), which one day they will let me run.
+
+![New York City running heatmap](nyc.png)
+
 ---
 
 ## Prerequisites
