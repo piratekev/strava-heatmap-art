@@ -86,7 +86,8 @@ def render_typography(img, sf_runs, font_path,
 
 def render_legend(img, color_ramp, font_path,
                   text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None,
-                  scale=1.0, position="center", width_scale=1.0):
+                  scale=1.0, position="center", width_scale=1.0,
+                  text_width_scale=1.0, show_elevation=True):
     """
     Draw a horizontal color gradient bar centered on the typography text block.
 
@@ -107,16 +108,17 @@ def render_legend(img, color_ramp, font_path,
     font_size  = int(max(9,  h * 3 // 200) * scale)
     margin     = int(max(10, h // 25) * scale)
     bar_height = int(max(6,  h * 3 // 400) * scale)
-    bar_width  = int(max(120, w * 3 // 8) * width_scale)
+    bar_width  = int(w * 3 // 8 * width_scale)
     label_gap  = int(max(6,  h // 200) * scale)
 
     font = _load_font(font_path, font_size)
     draw = ImageDraw.Draw(img)
 
-    # Vertical: center legend on the midpoint of the 4-line typography block
-    main_font_size = int(max(10, h // 40) * scale)
+    # Vertical: center legend on the midpoint of the typography block
+    main_font_size = int(max(10, h // 40) * scale * text_width_scale)
     main_line_gap  = int(max(8,  h // 120) * scale)
-    block_top    = h - margin - 4 * main_font_size - 3 * main_line_gap
+    num_lines    = 3 if not show_elevation else 4
+    block_top    = h - margin - num_lines * main_font_size - (num_lines - 1) * main_line_gap
     block_bottom = h - margin
     block_mid_y  = (block_top + block_bottom) // 2
     legend_h     = bar_height + label_gap + font_size

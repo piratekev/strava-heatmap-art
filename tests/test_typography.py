@@ -298,6 +298,83 @@ def test_render_typography_shows_elevation_by_default(tmp_path):
             assert "ft" in all_text
 
 
+def test_render_legend_bar_width_proportional_at_small_canvas(tmp_path):
+    """bar_width must be proportional to canvas width even at small (preview) sizes.
+
+    Previously max(120, w * 3 // 8) caused the floor to dominate at small w,
+    making preview bar disproportionately wide. Now it should be ~37.5% at any size.
+    """
+    font_path = str(tmp_path / "f.ttf")
+
+    def bar_proportion(canvas_w):
+        img = Image.new("RGB", (canvas_w, 500), color=(0, 0, 0))
+        before = np.array(img).copy()
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+            render_legend(img, color_ramp=_RAMP, font_path=font_path)
+        after = np.array(img)
+        diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
+        h, w = diff.shape
+        center_row = diff[h // 2, :]
+        changed = np.where(center_row > 0)[0]
+        if len(changed) == 0:
+            return 0.0
+        return (changed[-1] - changed[0] + 1) / canvas_w
+
+    prop_large = bar_proportion(1740)
+    prop_small = bar_proportion(174)
+    # Both should be close to 37.5%; definitely not 2x different
+    assert abs(prop_large - prop_small) < 0.15, (
+        f"large={prop_large:.2f}, small={prop_small:.2f}; bar must scale proportionally"
+    )
+
+
+def test_render_legend_centers_on_3line_block_when_elevation_hidden(tmp_path):
+    """When show_elevation=False the legend must center on the 3-line block,
+    not the 4-line block. Legend midpoint should be lower than when elevation is shown."""
+    font_path = str(tmp_path / "f.ttf")
+
+    def legend_mid_y(show_elev):
+        img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+        before = np.array(img).copy()
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+            render_legend(img, color_ramp=_RAMP, font_path=font_path, show_elevation=show_elev)
+        after = np.array(img)
+        diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
+        rows = np.where(diff.sum(axis=1) > 0)[0]
+        return rows.mean() if len(rows) else 0
+
+    mid_4line = legend_mid_y(show_elev=True)
+    mid_3line = legend_mid_y(show_elev=False)
+    # Typography is bottom-anchored: fewer lines → block_top moves down → legend center moves down (larger y)
+    assert mid_3line > mid_4line, (
+        f"3-line legend mid {mid_3line:.0f} should be below 4-line mid {mid_4line:.0f}"
+    )
+
+
+def test_render_legend_text_width_scale_affects_vertical_centering(tmp_path):
+    """text_width_scale must be used in block height estimation.
+    A smaller text_width_scale (narrower/shorter font) shifts block_top down,
+    moving legend center lower than with text_width_scale=1.0."""
+    font_path = str(tmp_path / "f.ttf")
+
+    def legend_mid_y(twscale):
+        img = Image.new("RGB", (540, 540), color=(0, 0, 0))
+        before = np.array(img).copy()
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+            render_legend(img, color_ramp=_RAMP, font_path=font_path, text_width_scale=twscale)
+        after = np.array(img)
+        diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
+        rows = np.where(diff.sum(axis=1) > 0)[0]
+        return rows.mean() if len(rows) else 0
+
+    mid_full = legend_mid_y(1.0)
+    mid_nyc  = legend_mid_y(0.7)
+    # Smaller text → block_top moves down → legend center moves down (larger y)
+    assert mid_nyc > mid_full, (
+        f"text_width_scale=0.7 legend mid {mid_nyc:.0f} should be below scale=1.0 mid {mid_full:.0f}"
+    )
+
+
 def test_render_legend_bar_width_not_shrunk_by_typography_scale(tmp_path):
     """bar_width must not be further shrunk when scale (TYPOGRAPHY_SCALE) < 1.
 
