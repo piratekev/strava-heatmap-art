@@ -141,7 +141,7 @@ def main():
                         width_scale=LEGEND_WIDTH_SCALE,
                         text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
                         show_elevation=SHOW_ELEVATION,
-                        y_offset=LEGEND_Y_OFFSET)
+                        y_offset=int(LEGEND_Y_OFFSET * scale))
 
     # Save
     if args.output:
