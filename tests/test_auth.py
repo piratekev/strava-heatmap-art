@@ -1,7 +1,6 @@
 import os
 import tempfile
 import pytest
-from unittest.mock import patch
 
 
 def test_check_env_credentials_raises_if_missing(monkeypatch):
@@ -34,8 +33,17 @@ def test_upsert_env_tokens_updates_existing_keys():
         assert "STRAVA_REFRESH_TOKEN=new_refresh" in content
         assert "STRAVA_CLIENT_ID=123" in content
         assert "old_access" not in content
+        assert "old_refresh" not in content
     finally:
         os.unlink(path)
+
+
+def test_check_env_credentials_raises_if_only_one_missing(monkeypatch):
+    monkeypatch.setenv("STRAVA_CLIENT_ID", "123")
+    monkeypatch.delenv("STRAVA_CLIENT_SECRET", raising=False)
+    from auth import _check_env_credentials
+    with pytest.raises(SystemExit):
+        _check_env_credentials()
 
 
 def test_upsert_env_tokens_appends_missing_keys():
