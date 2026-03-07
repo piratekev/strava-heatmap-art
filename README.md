@@ -67,45 +67,47 @@ Output is saved to `output/poster-<timestamp>.png`.
 
 ## Adapting for a new city
 
-Open `config.py` and update three things:
-
-**1. Geographic bounds**
+The recommended approach is to create a `<city>_config.py` that inherits from `config.py` and overrides only the values that differ:
 
 ```python
-SF_BOUNDS = {
-    "lat_min": 40.4774,   # south edge
-    "lat_max": 40.9176,   # north edge
-    "lng_min": -74.2591,  # west edge
-    "lng_max": -73.7004,  # east edge
+from config import *  # inherit SF defaults
+
+CITY_BOUNDS = {
+    "lat_min": 40.575,
+    "lat_max": 40.875,
+    "lng_min": -74.105,
+    "lng_max": -73.730,
 }
+
+CANVAS_WIDTH_PX  = 4800
+CANVAS_HEIGHT_PX = 5800
+MAP_TILE_CACHE = "data/map_tile_nyc.png"
 ```
 
-Use [bboxfinder.com](http://bboxfinder.com) to draw your city's bounding box and copy the coordinates.
+Then render with:
 
-**2. Canvas size**
+```bash
+python export.py --config nyc
+```
 
-The canvas must match the Mercator aspect ratio of your bounding box or the map will be distorted. After picking your bounds, calculate:
+NYC comes pre-configured — `nyc_config.py` is included and uses a 29° rotation so Manhattan's street grid runs vertically.
+
+**To configure your own city:**
+
+**1. Geographic bounds** — use [bboxfinder.com](http://bboxfinder.com) to draw your bounding box and set `CITY_BOUNDS`.
+
+**2. Canvas size** — the canvas must match the Mercator aspect ratio of your bounds or the map will be distorted:
 
 ```
 lng_range_rad  = (lng_max - lng_min) × π/180
 merc_max       = arcsinh(tan(lat_max × π/180))
 merc_min       = arcsinh(tan(lat_min × π/180))
-merc_range     = merc_max - merc_min
-aspect_ratio   = lng_range_rad / merc_range   ← width/height
+aspect_ratio   = lng_range_rad / (merc_max - merc_min)   ← width/height
 ```
 
-Then set canvas dimensions that match this ratio at your target print size (e.g. 16×20" at ~285 DPI = 4680×5850px for a 0.8 ratio):
+Set `CANVAS_WIDTH_PX` and `CANVAS_HEIGHT_PX` so `WIDTH / HEIGHT ≈ aspect_ratio`.
 
-```python
-CANVAS_WIDTH_PX  = 4680
-CANVAS_HEIGHT_PX = 5850   # CANVAS_WIDTH_PX / aspect_ratio
-```
-
-**3. Activity filter**
-
-`src/processor.py:filter_sf_runs()` filters activities whose centroid falls inside `SF_BOUNDS` — it automatically uses your updated bounds, no code change needed.
-
-> **Note:** The variable `SF_BOUNDS` is just a name — you don't need to rename it. If you do rename it in `config.py`, also update the import in `src/processor.py` (`from config import SF_BOUNDS`).
+**3. Activity filter** — `src/processor.py:filter_sf_runs()` filters by `CITY_BOUNDS` automatically — no code change needed.
 
 ## Tweaking visuals
 
