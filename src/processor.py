@@ -1,5 +1,5 @@
 import polyline as pl
-from config import SF_BOUNDS
+from config import CITY_BOUNDS
 
 
 def filter_sf_runs(activities):
@@ -19,8 +19,8 @@ def filter_sf_runs(activities):
         lngs = [c[1] for c in coords]
         centroid_lat = sum(lats) / len(lats)
         centroid_lng = sum(lngs) / len(lngs)
-        if (SF_BOUNDS["lat_min"] <= centroid_lat <= SF_BOUNDS["lat_max"] and
-                SF_BOUNDS["lng_min"] <= centroid_lng <= SF_BOUNDS["lng_max"]):
+        if (CITY_BOUNDS["lat_min"] <= centroid_lat <= CITY_BOUNDS["lat_max"] and
+                CITY_BOUNDS["lng_min"] <= centroid_lng <= CITY_BOUNDS["lng_max"]):
             result.append(act)
     return result
 

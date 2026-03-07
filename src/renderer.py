@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from scipy.ndimage import gaussian_filter
-from config import (SF_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR,
+from config import (CITY_BOUNDS, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, ROUTE_COLOR_RAMP, BG_COLOR,
                     HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
                     ROUTE_LINE_THICKNESS, ROUTE_LINE_THICKNESS_50_BONUS, ROUTE_LINE_THICKNESS_10_BONUS,
                     DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_STRENGTH,
@@ -29,7 +29,7 @@ class StravaRenderer:
         self.width = width
         self.height = height
         self.canvas = np.zeros((height, width), dtype=np.float32)
-        self.bounds = SF_BOUNDS.copy()  # default; overridden by set_bounds()
+        self.bounds = CITY_BOUNDS.copy()  # default; overridden by set_bounds()
 
     def set_bounds(self, runs, padding=0.05):
         """Compute lat/lng extent from run coords and store with padding."""
