@@ -39,7 +39,7 @@ from src.tiles import fetch_map_tile
 from src.typography import render_typography, render_legend, _download_font
 from config import (
     CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, OUTPUT_DIR,
-    MAP_TILE_OPACITY, MAP_TILE_CACHE,
+    MAP_TILE_OPACITY, MAP_TILE_CACHE, MAP_TILE_BRIGHTNESS,
     MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
     ROUTE_COLOR_RAMP, GAMMA, PRINT_DPI,
@@ -117,6 +117,9 @@ def main():
                 target_size=(renderer.width, renderer.height),
                 url_template=MAP_TILE_URL,
             )
+            if MAP_TILE_BRIGHTNESS != 1.0:
+                from PIL import ImageEnhance
+                tile = ImageEnhance.Brightness(tile).enhance(MAP_TILE_BRIGHTNESS)
             bg = composite_map_background(tile, (renderer.width, renderer.height), MAP_TILE_OPACITY, BG_COLOR)
             bg_arr = np.array(bg, dtype=np.float32)
             route_arr = img_array.astype(np.float32)

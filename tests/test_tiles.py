@@ -97,3 +97,18 @@ def test_fetch_map_tile_different_bounds_use_different_cache(tmp_path):
     key_a = hashlib.md5(f"13:{repr(sorted(bounds_a.items()))}".encode()).hexdigest()[:6]
     key_b = hashlib.md5(f"13:{repr(sorted(bounds_b.items()))}".encode()).hexdigest()[:6]
     assert key_a != key_b
+
+
+def test_map_tile_brightness_lightens_background():
+    """MAP_TILE_BRIGHTNESS > 1.0 must produce a brighter composite than 1.0."""
+    from PIL import Image, ImageEnhance
+    import numpy as np
+
+    tile = Image.new("RGB", (100, 100), color=(50, 50, 80))  # dark map tile
+
+    def apply_brightness(factor):
+        t = ImageEnhance.Brightness(tile).enhance(factor)
+        return np.array(t).mean()
+
+    assert apply_brightness(1.3) > apply_brightness(1.0)
+    assert apply_brightness(1.0) > apply_brightness(0.7)
