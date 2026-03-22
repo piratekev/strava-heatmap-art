@@ -1,14 +1,14 @@
 # San Francisco bounding box
 CITY_BOUNDS = {
-    "lat_min": 37.7068,     # unchanged
-    "lat_max": 37.8392,     # extended northward to maintain Mercator 4:5 aspect ratio with wider lng
-    "lng_min": -122.5152,   # extended west 20px at current pixel density (+20 × 0.00002863°/px)
+    "lat_min": 37.7057,     # was 37.7068 — extended south ~50px
+    "lat_max": 37.8392,     # unchanged
+    "lng_min": -122.5163,   # was -122.5152 — extended west 40px (+40 × 0.00002863°/px)
     "lng_max": -122.3812,   # unchanged
 }
 
-# Print canvas: 16x20" aspect ratio (4:5) — prints at ~285 DPI
-CANVAS_WIDTH_PX  = 4680   # was 4660 — +20px left side
-CANVAS_HEIGHT_PX = 5850   # 4680/0.8 = 5850 for 4:5 ratio
+# Print canvas: 16x20" aspect ratio (4:5) — prints at ~295 DPI
+CANVAS_WIDTH_PX  = 4720   # was 4680 — +40px west
+CANVAS_HEIGHT_PX = 5900   # was 5850 — +50px south (maintains 4:5 ratio)
 PRINT_DPI = 285
 CANVAS_ROTATION_DEGREES = 0  # degrees clockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
 
@@ -148,7 +148,7 @@ MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 #   16 = current default — sharper detail (~600 tiles, 2–3 min first download)
 #   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
 # Set high (16–17) only when producing the final print file.
-MAP_TILE_ZOOM = 15
+MAP_TILE_ZOOM = 17
 
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 MAP_TILE_CACHE = "data/map_tile.png"
