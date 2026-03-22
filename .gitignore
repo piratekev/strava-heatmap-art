@@ -12,3 +12,4 @@ dist/
 .venv/
 data/map_tile.png
 data/map_tile-preview.png
+data/map_tile-*

@@ -153,7 +153,7 @@ MAP_TILE_ZOOM = 17
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 # Brightness multiplier applied to the map tile before compositing.
 # 1.0 = no change. > 1.0 = brighter streets/water. Start at 1.3 and iterate.
-MAP_TILE_BRIGHTNESS = 1.3
+MAP_TILE_BRIGHTNESS = 1.5
 MAP_TILE_CACHE = "data/map_tile.png"
 MAP_FONT_PATH = "data/fonts/Montserrat-SemiBold.ttf"
 MAP_FONT_URL  = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-SemiBold.ttf"
