@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 from dotenv import load_dotenv
 
-# ── Config injection (same pattern as export.py) ──────────────────────────────
+# ── Config injection (same pattern as render.py) ──────────────────────────────
 _pre = argparse.ArgumentParser(add_help=False)
 _pre.add_argument("--config", default="sf")
 _pre_args, _ = _pre.parse_known_args()

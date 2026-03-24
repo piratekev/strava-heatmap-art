@@ -1,6 +1,6 @@
 # Strava Heatmap Art
 
-Generate a print-quality running heatmap poster from your Strava data.
+Generate a print-quality running heatmap poster — or an animated timelapse MP4 — from your Strava data.
 
 ![San Francisco running heatmap](sf.png)
 
@@ -48,32 +48,65 @@ Your browser opens the Strava authorization page. Click **Authorize**. The page 
 ```
 ✓ Auth complete. Tokens saved to .env
   Athlete: Kev Ay
-  Run: python export.py --fetch
+  Run: python render.py --fetch
 ```
 
-## Fetch & render
+---
+
+## Poster (`render.py`)
+
+Generates a high-DPI PNG suitable for large-format printing.
 
 **First run** — fetch activities and render:
 ```bash
-python export.py --fetch
+python render.py --fetch
 ```
 
 **Subsequent runs** — render from cache (fast):
 ```bash
-python export.py
+python render.py
 ```
 
 **Quick preview** at 1/10 scale for iteration:
 ```bash
-python export.py --preview
+python render.py --preview
 ```
 
 **NYC render:**
 ```bash
-python export.py --config nyc
+python render.py --config nyc
 ```
 
 Output is saved to `output/poster-<timestamp>.png`.
+
+---
+
+## Animation (`animate.py`)
+
+Generates an MP4 timelapse that draws your runs chronologically — slow on the first and last run, fast through the middle, with a cursor dot that decelerates and fades at the end.
+
+Requires [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`).
+
+**Preview** at half resolution (fast, no hold):
+```bash
+python animate.py --preview
+```
+
+**Full-resolution render** (1080×1350, Instagram 4:5 portrait):
+```bash
+python animate.py
+```
+
+**Fetch latest activities first:**
+```bash
+python animate.py --fetch
+```
+
+**NYC is not supported** — animation requires `CANVAS_ROTATION_DEGREES = 0`.
+
+Output is saved to `output/animation-<timestamp>.mp4`.
+
+---
 
 ## Adapting for a new city
 
@@ -97,7 +130,7 @@ MAP_TILE_CACHE = "data/map_tile_nyc.png"
 Then render with:
 
 ```bash
-python export.py --config nyc
+python render.py --config nyc
 ```
 
 NYC comes pre-configured — `nyc_config.py` is included and uses a 29° rotation so Manhattan's street grid runs vertically, with a non-centered crop to frame the borough.
@@ -134,3 +167,14 @@ All visual knobs are in `config.py`:
 | `HOT_BLOOM_THRESHOLD` | Density cutoff to trigger hot bloom | 0.5 – 0.9 |
 | `MAP_TILE_OPACITY` | How bright the street map shows through | 0.5 – 1.0 |
 | `DENSITY_EXPAND_STRENGTH` | How much denser routes appear thicker | 0.5 – 2.0 |
+
+Animation-specific knobs:
+
+| Variable | What it controls |
+|---|---|
+| `ANIMATION_DRAWING_SPEED` | Pixels/frame for the fast middle section — tune for target duration |
+| `ANIMATION_DRAWING_SPEED_SLOW` | Pixels/frame for first and last run |
+| `ANIMATION_SPEED_RAMP_RUNS` | Runs over which speed ramps slow → fast (and back) |
+| `ANIMATION_DOT_RADIUS` | Cursor dot size |
+| `ANIMATION_DOT_BRIGHTNESS` | Cursor dot glow intensity |
+| `ANIMATION_HOLD_SECONDS` | Hold duration on completed frame |

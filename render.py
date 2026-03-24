@@ -3,12 +3,12 @@
 Generate a running heatmap poster from Strava data.
 
 Usage:
-    python export.py                      # SF, full render
-    python export.py --config nyc         # NYC render
-    python export.py --preview            # 1/10 scale for quick iteration
-    python export.py --fetch              # fetch new activities first
-    python export.py --no-map
-    python export.py --no-bloom --no-grain --no-glow
+    python render.py                      # SF, full render
+    python render.py --config nyc         # NYC render
+    python render.py --preview            # 1/10 scale for quick iteration
+    python render.py --fetch              # fetch new activities first
+    python render.py --no-map
+    python render.py --no-bloom --no-grain --no-glow
 """
 import argparse
 import importlib
