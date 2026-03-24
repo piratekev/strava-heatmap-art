@@ -154,3 +154,35 @@ def test_paint_dot_clipped_at_edge():
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
     # Should not raise even when dot is partially out of bounds
     paint_dot(frame, cx=0, cy=0, radius=10, blur_sigma=0)
+
+
+# ── Typography ────────────────────────────────────────────────────────────────
+
+from PIL import Image
+from src.animator import render_animation_typography
+
+
+def test_render_animation_typography_returns_image():
+    img = Image.new("RGB", (1080, 1350), (0, 0, 0))
+    result = render_animation_typography(
+        img,
+        month_year="Mar 2019",
+        run_count=42,
+        total_miles_floor=312,
+        font_path="data/fonts/Montserrat-SemiBold.ttf",
+        scale=1.0,
+    )
+    assert isinstance(result, Image.Image)
+    assert result.size == (1080, 1350)
+
+
+def test_render_animation_typography_modifies_pixels():
+    img = Image.new("RGB", (1080, 1350), (0, 0, 0))
+    before = list(img.getdata())
+    result = render_animation_typography(
+        img, "Jan 2020", 1, 0,
+        font_path="data/fonts/Montserrat-SemiBold.ttf",
+        scale=1.0,
+    )
+    after = list(result.getdata())
+    assert before != after  # some pixels changed (text was drawn)

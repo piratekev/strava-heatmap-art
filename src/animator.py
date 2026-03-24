@@ -153,3 +153,48 @@ def paint_dot(frame, cx, cy, radius, blur_sigma):
         # Screen blend: result = 255 - (255 - frame) * (255 - dot) / 255
         blended = 255 - (255 - ch) * (255 - dot_layer) / 255
         frame[:, :, c] = np.clip(blended, 0, 255).astype(np.uint8)
+
+
+# ── Typography ────────────────────────────────────────────────────────────────
+
+def render_animation_typography(img, month_year, run_count, total_miles_floor,
+                                 font_path, scale=1.0):
+    """Render live animation stats onto img (PIL Image) in the same bottom-right
+    position as render_typography.
+
+    Lines (top to bottom):
+        month_year    e.g. "Mar 2019"
+        run_count     e.g. "42 runs"
+        total_miles   e.g. "312 mi"
+
+    Returns the modified image.
+    """
+    w, h = img.size
+    font_size = int(max(10, h // 40) * scale)
+    margin = int(max(10, h // 25) * scale)
+    shadow_offset = int(max(2, h // 1800) * scale)
+    line_gap = int(max(8, h // 120) * scale)
+
+    draw = ImageDraw.Draw(img)
+    font = _load_font(font_path, font_size)
+    shadow = (0, 0, 0)
+    text_color = (255, 255, 255)
+
+    lines = [
+        month_year,
+        f"{run_count:,} runs",
+        f"{total_miles_floor} mi",
+    ]
+
+    y = h - margin
+    for text in reversed(lines):
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        x = w - margin - text_w
+        y -= text_h
+        draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill=shadow)
+        draw.text((x, y), text, font=font, fill=text_color)
+        y -= line_gap
+
+    return img
