@@ -1,10 +1,16 @@
 """Animation pipeline for strava-heatmap-art."""
 import math
+import shutil
 import subprocess
 import sys
 
+import cv2
 import numpy as np
+from PIL import Image, ImageDraw
+from scipy.ndimage import gaussian_filter
+
 from src.renderer import _ramp_colors
+from src.typography import _load_font
 
 
 # ── Mileage ───────────────────────────────────────────────────────────────────
@@ -124,3 +130,26 @@ def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color):
         rgb[:, :, c] = bg[c] * (1 - norm) + route_colors[:, :, c] * norm
 
     return np.clip(rgb, 0, 255).astype(np.uint8)
+
+
+# ── Dot rendering ─────────────────────────────────────────────────────────────
+
+def paint_dot(frame, cx, cy, radius, blur_sigma):
+    """Paint a white circle onto frame (uint8 HxWx3) at (cx, cy).
+
+    If blur_sigma > 0, apply Gaussian blur to the dot layer before compositing
+    (screen blend) so the dot has a soft halo rather than a hard edge.
+    Modifies frame in-place.
+    """
+    h, w = frame.shape[:2]
+    dot_layer = np.zeros((h, w), dtype=np.float32)
+    cv2.circle(dot_layer, (int(cx), int(cy)), int(radius), color=255.0, thickness=-1)
+
+    if blur_sigma > 0:
+        dot_layer = gaussian_filter(dot_layer, sigma=blur_sigma)
+
+    for c in range(3):
+        ch = frame[:, :, c].astype(np.float32)
+        # Screen blend: result = 255 - (255 - frame) * (255 - dot) / 255
+        blended = 255 - (255 - ch) * (255 - dot_layer) / 255
+        frame[:, :, c] = np.clip(blended, 0, 255).astype(np.uint8)
