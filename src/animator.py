@@ -423,7 +423,6 @@ def run_animation(runs, output_path, config):
     total_miles = 0.0
     run_count = 0
     frame_count = 0
-    final_frame_bytes = None
 
     def _build_frame(month_year_str):
         """Composite the current accumulation state into a uint8 RGB frame."""
@@ -458,7 +457,6 @@ def run_animation(runs, output_path, config):
         opening = _build_frame(first_month_year)
         proc.stdin.write(opening.tobytes())
         frame_count += 1
-        final_frame_bytes = opening.tobytes()
 
         for run_idx, run in enumerate(runs):
             geo_coords = run["coords"]
@@ -497,19 +495,21 @@ def run_animation(runs, output_path, config):
                     paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur, dot_brightness)
 
                 # Write frame
-                final_frame_bytes = frame_rgb.tobytes()
-                proc.stdin.write(final_frame_bytes)
+                proc.stdin.write(frame_rgb.tobytes())
                 frame_count += 1
 
                 seg_idx, t = new_seg, new_t
                 if seg_idx >= len(px_coords) - 2 and t >= 1.0:
                     break
 
-        # Hold frames
-        if final_frame_bytes and hold_frames > 0:
+        # Hold frames — rebuild final frame without dot
+        if hold_frames > 0:
             print(f"Writing {hold_frames} hold frames...")
+            last_month_year = _format_month_year(runs[-1]["start_date"]) if runs else ""
+            hold_frame = _build_frame(last_month_year)
+            hold_bytes = hold_frame.tobytes()
             for _ in range(hold_frames):
-                proc.stdin.write(final_frame_bytes)
+                proc.stdin.write(hold_bytes)
 
     finally:
         proc.stdin.close()
