@@ -70,7 +70,8 @@ def main():
 
     if args.preview:
         w, h = _cfg.ANIMATION_OUTPUT_RESOLUTION
-        AnimConfig.ANIMATION_OUTPUT_RESOLUTION = (w // 2, h // 2)
+        # yuv420p requires dimensions divisible by 2 — floor to nearest even
+        AnimConfig.ANIMATION_OUTPUT_RESOLUTION = (w // 2 & ~1, h // 2 & ~1)
         AnimConfig.ANIMATION_HOLD_SECONDS = 0
         print(f"Preview mode: {AnimConfig.ANIMATION_OUTPUT_RESOLUTION[0]}x{AnimConfig.ANIMATION_OUTPUT_RESOLUTION[1]}, no hold.")
 
