@@ -198,3 +198,36 @@ def render_animation_typography(img, month_year, run_count, total_miles_floor,
         y -= line_gap
 
     return img
+
+
+# ── ffmpeg pipe ───────────────────────────────────────────────────────────────
+
+def check_ffmpeg():
+    """Exit with a clear error if ffmpeg is not on PATH."""
+    if shutil.which("ffmpeg") is None:
+        sys.exit(
+            "ERROR: ffmpeg not found on PATH. Install it (e.g. `brew install ffmpeg`) "
+            "and re-run animate.py."
+        )
+
+
+def open_ffmpeg_pipe(output_path, width, height, fps):
+    """Open an ffmpeg subprocess that reads raw RGB frames from stdin.
+
+    Returns the Popen object. Write frames as raw bytes to proc.stdin.
+    Call proc.stdin.close() and proc.wait() when done.
+    """
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-vcodec", "rawvideo",
+        "-pix_fmt", "rgb24",
+        "-s", f"{width}x{height}",
+        "-r", str(fps),
+        "-i", "pipe:0",
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-crf", "18",
+        output_path,
+    ]
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE)
