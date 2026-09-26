@@ -39,3 +39,60 @@ def compute_frame_miles(geo_coords, start_seg, start_t, end_seg, end_t):
         seg += 1
         t0 = 0.0
     return total
+
+
+# ── Cursor ────────────────────────────────────────────────────────────────────
+
+def advance_cursor(pixel_coords, seg_idx, t, pixels_budget):
+    """Advance cursor along pixel_coords by pixels_budget pixels.
+
+    Returns:
+        (new_seg_idx, new_t, drawn_segments)
+
+    drawn_segments: list of ((x0,y0), (x1,y1)) float tuples — one entry per
+        segment boundary crossed. Used for rasterization and dot placement.
+        The final entry's [1] is the new cursor tip position.
+    """
+    drawn = []
+    n = len(pixel_coords)
+
+    while pixels_budget > 0 and seg_idx < n - 1:
+        p0 = pixel_coords[seg_idx]
+        p1 = pixel_coords[seg_idx + 1]
+        dx = p1[0] - p0[0]
+        dy = p1[1] - p0[1]
+        seg_len = math.hypot(dx, dy)
+
+        if seg_len == 0:
+            # Zero-length segment: skip to next without consuming budget
+            seg_idx += 1
+            t = 0.0
+            continue
+
+        remaining_px = seg_len * (1.0 - t)
+        start_x = p0[0] + t * dx
+        start_y = p0[1] + t * dy
+
+        if pixels_budget >= remaining_px:
+            # Consume this segment entirely and continue
+            pixels_budget -= remaining_px
+            end_x, end_y = float(p1[0]), float(p1[1])
+            drawn.append(((start_x, start_y), (end_x, end_y)))
+            seg_idx += 1
+            t = 0.0
+            # If we've just finished the last segment, stop
+            if seg_idx >= n - 1:
+                seg_idx = n - 2
+                t = 1.0
+                break
+        else:
+            # Consume partial segment
+            frac = pixels_budget / seg_len
+            t += frac
+            t = min(t, 1.0)
+            end_x = p0[0] + t * dx
+            end_y = p0[1] + t * dy
+            drawn.append(((start_x, start_y), (end_x, end_y)))
+            pixels_budget = 0
+
+    return seg_idx, t, drawn
