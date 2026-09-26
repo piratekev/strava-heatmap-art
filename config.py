@@ -157,3 +157,11 @@ MAP_TILE_BRIGHTNESS = 1.5
 MAP_TILE_CACHE = "data/map_tile.png"
 MAP_FONT_PATH = "data/fonts/Montserrat-SemiBold.ttf"
 MAP_FONT_URL  = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-SemiBold.ttf"
+
+# ── Animation ─────────────────────────────────────────────────────────────────
+ANIMATION_FPS = 60
+ANIMATION_DRAWING_SPEED = 80   # pixels/frame at ANIMATION_OUTPUT_RESOLUTION; tune to hit ~60s
+ANIMATION_DOT_RADIUS = 12      # cursor dot radius in pixels at ANIMATION_OUTPUT_RESOLUTION
+ANIMATION_DOT_BLUR = 4         # Gaussian sigma for dot halo; 0 = hard edge
+ANIMATION_HOLD_SECONDS = 3     # seconds to hold on final frame
+ANIMATION_OUTPUT_RESOLUTION = (1080, 1350)  # (width, height) — 4:5 for Instagram
