@@ -3,6 +3,9 @@ import math
 import subprocess
 import sys
 
+import numpy as np
+from src.renderer import _ramp_colors
+
 
 # ── Mileage ───────────────────────────────────────────────────────────────────
 
@@ -96,3 +99,28 @@ def advance_cursor(pixel_coords, seg_idx, t, pixels_budget):
             pixels_budget = 0
 
     return seg_idx, t, drawn
+
+
+# ── Color mapping ─────────────────────────────────────────────────────────────
+
+def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color):
+    """Convert float32 accumulation canvas to uint8 RGB.
+
+    Uses fixed final_log_max so early frames are dim and the final frame
+    matches the static poster color output (without density expand / bloom).
+    """
+    if final_log_max <= 0:
+        norm = np.zeros_like(canvas)
+    else:
+        norm = np.log1p(canvas) / final_log_max
+
+    norm = norm ** gamma
+    norm = np.clip(norm, 0.0, 1.0)
+
+    bg = np.array(bg_color, dtype=np.float32)
+    route_colors = _ramp_colors(norm, color_ramp)
+    rgb = np.zeros((*canvas.shape, 3), dtype=np.float32)
+    for c in range(3):
+        rgb[:, :, c] = bg[c] * (1 - norm) + route_colors[:, :, c] * norm
+
+    return np.clip(rgb, 0, 255).astype(np.uint8)

@@ -84,3 +84,41 @@ def test_advance_cursor_zero_length_segment_skipped():
     new_seg, new_t, drawn = advance_cursor(pts, 0, 0.0, 50.0)
     # should advance into seg1 (or skip seg0) without dividing by zero
     assert new_t >= 0.0
+
+
+# ── Color mapping ─────────────────────────────────────────────────────────────
+
+import numpy as np
+from src.animator import canvas_to_rgb
+
+
+def test_canvas_to_rgb_all_zero_is_bg_color():
+    canvas = np.zeros((10, 10), dtype=np.float32)
+    final_log_max = 1.0
+    color_ramp = [(0.0, [0, 0, 255]), (1.0, [255, 0, 0])]
+    bg = [0, 0, 0]
+    rgb = canvas_to_rgb(canvas, final_log_max, gamma=1.0, color_ramp=color_ramp, bg_color=bg)
+    assert rgb.shape == (10, 10, 3)
+    assert rgb.dtype == np.uint8
+    assert rgb.max() == 0  # all background = black
+
+
+def test_canvas_to_rgb_at_final_log_max_is_bright():
+    # A canvas where one pixel equals e^final_log_max - 1 (i.e. log1p = final_log_max)
+    final_log_max = math.log1p(5.0)
+    canvas = np.zeros((5, 5), dtype=np.float32)
+    canvas[2, 2] = 5.0  # log1p(5) / final_log_max = 1.0
+    color_ramp = [(0.0, [0, 0, 255]), (1.0, [255, 0, 0])]
+    bg = [0, 0, 0]
+    rgb = canvas_to_rgb(canvas, final_log_max, gamma=1.0, color_ramp=color_ramp, bg_color=bg)
+    # Peak pixel should be near [255, 0, 0]
+    assert rgb[2, 2, 0] > 200
+    assert rgb[2, 2, 2] < 50
+
+
+def test_canvas_to_rgb_shape_preserved():
+    canvas = np.ones((20, 15), dtype=np.float32)
+    rgb = canvas_to_rgb(canvas, final_log_max=1.0, gamma=1.0,
+                        color_ramp=[(0.0, [0,0,0]), (1.0, [255,255,255])],
+                        bg_color=[0,0,0])
+    assert rgb.shape == (20, 15, 3)
