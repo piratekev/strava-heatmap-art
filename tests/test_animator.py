@@ -122,3 +122,35 @@ def test_canvas_to_rgb_shape_preserved():
                         color_ramp=[(0.0, [0,0,0]), (1.0, [255,255,255])],
                         bg_color=[0,0,0])
     assert rgb.shape == (20, 15, 3)
+
+
+# ── Dot rendering ─────────────────────────────────────────────────────────────
+
+from src.animator import paint_dot
+
+
+def test_paint_dot_center_is_white():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    paint_dot(frame, cx=50, cy=50, radius=5, blur_sigma=0)
+    assert frame[50, 50, 0] == 255
+    assert frame[50, 50, 1] == 255
+    assert frame[50, 50, 2] == 255
+
+
+def test_paint_dot_does_not_modify_far_pixels():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    paint_dot(frame, cx=50, cy=50, radius=5, blur_sigma=0)
+    assert frame[0, 0, 0] == 0  # top-left corner untouched
+
+
+def test_paint_dot_with_blur_does_not_crash():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    paint_dot(frame, cx=50, cy=50, radius=5, blur_sigma=4)
+    # Blur spreads energy — center should still be bright-ish
+    assert frame[50, 50, 0] > 100
+
+
+def test_paint_dot_clipped_at_edge():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    # Should not raise even when dot is partially out of bounds
+    paint_dot(frame, cx=0, cy=0, radius=10, blur_sigma=0)
