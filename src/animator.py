@@ -319,9 +319,9 @@ def run_animation(runs, output_path, config):
     pre_renderer = StravaRenderer(width=out_w, height=out_h)
     pre_renderer.rasterize_all(runs)
     final_canvas_max = float(pre_renderer.canvas.max())
-    if final_canvas_max == 0:
-        sys.exit("ERROR: No qualifying runs found after filtering. Nothing to animate.")
     final_log_max = float(np.log1p(pre_renderer.canvas).max())
+    if final_log_max == 0:
+        sys.exit("ERROR: No qualifying runs found after filtering. Nothing to animate.")
     del pre_renderer
 
     # ── Duration estimate ─────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ def run_animation(runs, output_path, config):
     total_frames = compute_total_frames(runs, anim_renderer, drawing_speed)
     hold_frames = int(hold_seconds * fps)
     total_duration_s = (total_frames + hold_frames) / fps
-    print(f"Expected duration: {total_duration_s:.0f}s ({total_frames + hold_frames} frames at {fps}fps). "
+    print(f"Expected duration: {total_duration_s:.0f}s ({total_frames} frames at {fps}fps). "
           f"Adjust ANIMATION_DRAWING_SPEED to change.")
 
     # ── Map tile ──────────────────────────────────────────────────────────────
@@ -434,7 +434,7 @@ def run_animation(runs, output_path, config):
                 frame_count += 1
 
                 seg_idx, t = new_seg, new_t
-                if seg_idx >= len(px_coords) - 1 and t >= 1.0:
+                if seg_idx >= len(px_coords) - 2 and t >= 1.0:
                     break
 
         # Hold frames
