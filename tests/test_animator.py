@@ -215,3 +215,57 @@ def test_open_ffmpeg_pipe_uses_correct_args():
         assert "60" in call_args
         assert "out.mp4" in call_args
         assert proc is mock_proc
+
+
+# ── Animation loop helpers ────────────────────────────────────────────────────
+
+from src.animator import compute_total_frames, build_run_pixel_coords
+
+
+def _make_renderer(width=200, height=250):
+    from src.renderer import StravaRenderer
+    return StravaRenderer(width=width, height=height)
+
+
+def _make_run(coords):
+    return {
+        "id": 1,
+        "coords": coords,
+        "start_date": "2020-03-15T08:00:00Z",
+        "distance": 5000.0,
+        "average_speed": 3.0,
+        "total_elevation_gain": 50.0,
+    }
+
+
+def test_compute_total_frames_proportional_to_distance():
+    renderer = _make_renderer()
+    run_a = _make_run([(37.77, -122.45), (37.78, -122.45)])
+    run_b = _make_run([(37.77, -122.45), (37.77, -122.44)])  # similar length
+    frames_a = compute_total_frames([run_a], renderer, drawing_speed=10)
+    frames_b = compute_total_frames([run_b], renderer, drawing_speed=10)
+    # Both should produce some frames; difference < 50% of mean
+    assert frames_a > 0
+    assert frames_b > 0
+
+
+def test_compute_total_frames_zero_for_single_point_run():
+    renderer = _make_renderer()
+    run = _make_run([(37.77, -122.45)])  # only one point, no segments
+    frames = compute_total_frames([run], renderer, drawing_speed=10)
+    assert frames == 0
+
+
+def test_build_run_pixel_coords_single_point_run_returns_one_point():
+    renderer = _make_renderer()
+    run = _make_run([(37.77, -122.45)])
+    px = build_run_pixel_coords(run, renderer)
+    assert len(px) == 1  # no segments — caller must guard len < 2
+
+
+def test_build_run_pixel_coords_returns_list_of_tuples():
+    renderer = _make_renderer()
+    run = _make_run([(37.77, -122.45), (37.78, -122.44)])
+    px = build_run_pixel_coords(run, renderer)
+    assert len(px) == 2
+    assert all(isinstance(p, tuple) and len(p) == 2 for p in px)

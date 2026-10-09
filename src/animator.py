@@ -231,3 +231,220 @@ def open_ffmpeg_pipe(output_path, width, height, fps):
         output_path,
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
+
+
+# ── Animation loop helpers ────────────────────────────────────────────────────
+
+def build_run_pixel_coords(run, renderer):
+    """Project a run's geo coords to pixel coords using renderer.project()."""
+    return [renderer.project(lat, lng) for lat, lng in run["coords"]]
+
+
+def _path_length_px(pixel_coords):
+    """Total Euclidean length of a pixel-space polyline."""
+    total = 0.0
+    for i in range(len(pixel_coords) - 1):
+        total += math.hypot(
+            pixel_coords[i + 1][0] - pixel_coords[i][0],
+            pixel_coords[i + 1][1] - pixel_coords[i][1],
+        )
+    return total
+
+
+def compute_total_frames(runs, renderer, drawing_speed):
+    """Estimate total animation frames (excluding hold) for all runs."""
+    total_px = 0.0
+    for run in runs:
+        if len(run["coords"]) < 2:
+            continue
+        px_coords = build_run_pixel_coords(run, renderer)
+        total_px += _path_length_px(px_coords)
+    return int(total_px / drawing_speed) if drawing_speed > 0 else 0
+
+
+def _format_month_year(start_date):
+    """Convert ISO date string to 'Mon YYYY' e.g. 'Mar 2019'."""
+    from datetime import datetime
+    try:
+        dt = datetime.strptime(start_date[:10], "%Y-%m-%d")
+        return dt.strftime("%b %Y")
+    except ValueError:
+        return start_date[:7]
+
+
+def run_animation(runs, output_path, config):
+    """Run the full animation pipeline.
+
+    Args:
+        runs:        list of run dicts from decode_runs()
+        output_path: path to write the MP4
+        config:      module/object with animation config knobs
+    """
+    from src.renderer import StravaRenderer
+    from src.tiles import fetch_map_tile
+    from src.typography import render_legend, _download_font
+    from PIL import ImageEnhance
+    from config import (
+        ROUTE_COLOR_RAMP, BG_COLOR, GAMMA,
+        ROUTE_LINE_THICKNESS,
+        MAP_TILE_URL, MAP_TILE_CACHE, MAP_TILE_OPACITY, MAP_TILE_BRIGHTNESS,
+        MAP_FONT_PATH, MAP_FONT_URL,
+        CANVAS_HEIGHT_PX, TYPOGRAPHY_SCALE, LEGEND_POSITION, LEGEND_WIDTH_SCALE,
+        TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION, LEGEND_Y_OFFSET,
+        CANVAS_ROTATION_DEGREES,
+    )
+
+    fps = config.ANIMATION_FPS
+    drawing_speed = config.ANIMATION_DRAWING_SPEED
+    dot_radius = config.ANIMATION_DOT_RADIUS
+    dot_blur = config.ANIMATION_DOT_BLUR
+    hold_seconds = config.ANIMATION_HOLD_SECONDS
+    out_w, out_h = config.ANIMATION_OUTPUT_RESOLUTION
+
+    # Guard: rotation not supported
+    if CANVAS_ROTATION_DEGREES != 0:
+        sys.exit(
+            f"ERROR: animate.py does not support CANVAS_ROTATION_DEGREES={CANVAS_ROTATION_DEGREES}. "
+            "Add CANVAS_ROTATION_DEGREES = 0 to your city config override."
+        )
+
+    # Guard: ffmpeg
+    check_ffmpeg()
+
+    # Sort runs chronologically
+    runs = sorted(runs, key=lambda r: r["start_date"])
+
+    # ── Pre-pass ──────────────────────────────────────────────────────────────
+    print("Pre-pass: rasterizing all runs to compute normalization anchor...")
+    pre_renderer = StravaRenderer(width=out_w, height=out_h)
+    pre_renderer.rasterize_all(runs)
+    final_canvas_max = float(pre_renderer.canvas.max())
+    if final_canvas_max == 0:
+        sys.exit("ERROR: No qualifying runs found after filtering. Nothing to animate.")
+    final_log_max = float(np.log1p(pre_renderer.canvas).max())
+    del pre_renderer
+
+    # ── Duration estimate ─────────────────────────────────────────────────────
+    anim_renderer = StravaRenderer(width=out_w, height=out_h)
+    total_frames = compute_total_frames(runs, anim_renderer, drawing_speed)
+    hold_frames = int(hold_seconds * fps)
+    total_duration_s = (total_frames + hold_frames) / fps
+    print(f"Expected duration: {total_duration_s:.0f}s ({total_frames + hold_frames} frames at {fps}fps). "
+          f"Adjust ANIMATION_DRAWING_SPEED to change.")
+
+    # ── Map tile ──────────────────────────────────────────────────────────────
+    print("Fetching map tile...")
+    _download_font(MAP_FONT_PATH, MAP_FONT_URL)
+    cache_path = MAP_TILE_CACHE.replace(".png", "-anim.png")
+    tile = fetch_map_tile(
+        bounds=anim_renderer.bounds,
+        zoom=15,
+        cache_path=cache_path,
+        target_size=(out_w, out_h),
+        url_template=MAP_TILE_URL,
+    )
+    if MAP_TILE_BRIGHTNESS != 1.0:
+        tile = ImageEnhance.Brightness(tile).enhance(MAP_TILE_BRIGHTNESS)
+    map_arr = np.array(tile.resize((out_w, out_h)), dtype=np.float32)
+
+    # ── Pre-render legend ─────────────────────────────────────────────────────
+    anim_scale = (out_h / CANVAS_HEIGHT_PX) * TYPOGRAPHY_SCALE
+    legend_base = Image.new("RGB", (out_w, out_h), (0, 0, 0))
+    legend_img = render_legend(
+        legend_base, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
+        gamma=GAMMA, canvas_max_val=final_canvas_max,
+        scale=anim_scale, position=LEGEND_POSITION,
+        width_scale=LEGEND_WIDTH_SCALE,
+        text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
+        show_elevation=SHOW_ELEVATION,
+        y_offset=LEGEND_Y_OFFSET,
+    )
+    legend_arr = np.array(legend_img, dtype=np.float32)
+
+    # ── Animation pass ────────────────────────────────────────────────────────
+    print(f"Rendering {len(runs)} runs → {output_path}")
+    proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps)
+    accumulation = anim_renderer.canvas  # float32, starts at zero
+
+    total_miles = 0.0
+    run_count = 0
+    frame_count = 0
+    final_frame_bytes = None
+
+    try:
+        for run in runs:
+            geo_coords = run["coords"]
+            if len(geo_coords) < 2:
+                run_count += 1
+                continue
+
+            px_coords = build_run_pixel_coords(run, anim_renderer)
+            run_count += 1
+            month_year = _format_month_year(run["start_date"])
+
+            seg_idx, t = 0, 0.0
+
+            while True:
+                new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, drawing_speed)
+
+                # Draw segments onto accumulation canvas
+                buf = np.zeros((out_h, out_w), dtype=np.float32)
+                for (x0, y0), (x1, y1) in drawn:
+                    cv2.line(buf, (int(x0), int(y0)), (int(x1), int(y1)),
+                             color=1.0, thickness=ROUTE_LINE_THICKNESS, lineType=cv2.LINE_AA)
+                accumulation += buf
+
+                # Mileage for this frame
+                if drawn:
+                    frame_miles = compute_frame_miles(geo_coords, seg_idx, t, new_seg, new_t)
+                    total_miles += frame_miles
+
+                # Build output frame
+                frame_rgb = canvas_to_rgb(accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR)
+                frame_f = frame_rgb.astype(np.float32)
+
+                # Composite map tile (screen blend)
+                bg_f = np.zeros_like(frame_f)
+                for c in range(3):
+                    bg_f[:, :, c] = map_arr[:, :, c] * MAP_TILE_OPACITY
+                result = 255 - (255 - bg_f) * (255 - frame_f) / 255
+                frame_rgb = np.clip(result, 0, 255).astype(np.uint8)
+
+                # Composite static legend (screen blend)
+                frame_f2 = frame_rgb.astype(np.float32)
+                result2 = 255 - (255 - frame_f2) * (255 - legend_arr) / 255
+                frame_rgb = np.clip(result2, 0, 255).astype(np.uint8)
+
+                # Paint cursor dot at tip
+                if drawn:
+                    tip_x, tip_y = drawn[-1][1]
+                    paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur)
+
+                # Stamp live typography
+                pil_frame = Image.fromarray(frame_rgb, mode="RGB")
+                pil_frame = render_animation_typography(
+                    pil_frame, month_year, run_count, int(math.floor(total_miles)),
+                    MAP_FONT_PATH, scale=anim_scale,
+                )
+                frame_rgb = np.array(pil_frame)
+
+                # Write frame
+                final_frame_bytes = frame_rgb.tobytes()
+                proc.stdin.write(final_frame_bytes)
+                frame_count += 1
+
+                seg_idx, t = new_seg, new_t
+                if seg_idx >= len(px_coords) - 1 and t >= 1.0:
+                    break
+
+        # Hold frames
+        if final_frame_bytes and hold_frames > 0:
+            print(f"Writing {hold_frames} hold frames...")
+            for _ in range(hold_frames):
+                proc.stdin.write(final_frame_bytes)
+
+    finally:
+        proc.stdin.close()
+        proc.wait()
+
+    print(f"Done. {frame_count + hold_frames} frames → {output_path}")
