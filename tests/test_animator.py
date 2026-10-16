@@ -86,6 +86,15 @@ def test_advance_cursor_zero_length_segment_skipped():
     assert new_t >= 0.0
 
 
+def test_advance_cursor_zero_length_last_segment_clamps():
+    """Zero-length last segment must not advance seg_idx past n-2."""
+    pts = [(0, 0), (100, 0), (100, 0)]  # seg1 (index 1) has zero length (last)
+    new_seg, new_t, drawn = advance_cursor(pts, 1, 0.0, 50.0)
+    # n=3, last valid segment is n-2=1 → must clamp to (1, 1.0)
+    assert new_seg == 1
+    assert new_t == pytest.approx(1.0)
+
+
 # ── Color mapping ─────────────────────────────────────────────────────────────
 
 import numpy as np

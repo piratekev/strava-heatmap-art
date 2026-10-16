@@ -76,6 +76,10 @@ def advance_cursor(pixel_coords, seg_idx, t, pixels_budget):
             # Zero-length segment: skip to next without consuming budget
             seg_idx += 1
             t = 0.0
+            if seg_idx >= n - 1:
+                seg_idx = n - 2
+                t = 1.0
+                break
             continue
 
         remaining_px = seg_len * (1.0 - t)
