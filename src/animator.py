@@ -113,11 +113,17 @@ def advance_cursor(pixel_coords, seg_idx, t, pixels_budget):
 
 # ── Color mapping ─────────────────────────────────────────────────────────────
 
-def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color):
+def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color,
+                  density_expand_sigma=0.0, density_expand_power=2.0, density_expand_strength=0.0,
+                  hot_bloom_sigma=0.0, hot_bloom_threshold=0.75, hot_bloom_strength=4.0):
     """Convert float32 accumulation canvas to uint8 RGB.
 
     Uses fixed final_log_max so early frames are dim and the final frame
-    matches the static poster color output (without density expand / bloom).
+    matches the static poster color output.
+
+    Optional post-processing effects (ported from renderer.to_image):
+      density_expand_sigma > 0  — thicken heavy corridors via Gaussian expand
+      hot_bloom_sigma > 0       — add bright glow on peak-density pixels
     """
     if final_log_max <= 0:
         norm = np.zeros_like(canvas)
@@ -125,6 +131,19 @@ def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color):
         norm = np.log1p(canvas) / final_log_max
 
     norm = norm ** gamma
+    norm = np.clip(norm, 0.0, 1.0)
+
+    if density_expand_sigma > 0 and density_expand_strength > 0:
+        expanded = gaussian_filter(norm ** density_expand_power, sigma=density_expand_sigma)
+        norm = 1 - (1 - norm) * (1 - expanded * density_expand_strength)
+
+    if hot_bloom_sigma > 0:
+        hot_mask = np.clip(
+            (norm - hot_bloom_threshold) / (1.0 - hot_bloom_threshold), 0, 1
+        )
+        hot_layer = gaussian_filter(hot_mask, sigma=hot_bloom_sigma)
+        norm = 1 - (1 - norm) * (1 - hot_layer * hot_bloom_strength)
+
     norm = np.clip(norm, 0.0, 1.0)
 
     bg = np.array(bg_color, dtype=np.float32)
@@ -138,11 +157,12 @@ def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color):
 
 # ── Dot rendering ─────────────────────────────────────────────────────────────
 
-def paint_dot(frame, cx, cy, radius, blur_sigma):
+def paint_dot(frame, cx, cy, radius, blur_sigma, brightness=1.0):
     """Paint a white circle onto frame (uint8 HxWx3) at (cx, cy).
 
     If blur_sigma > 0, apply Gaussian blur to the dot layer before compositing
     (screen blend) so the dot has a soft halo rather than a hard edge.
+    brightness multiplies the dot layer after blur (>1 saturates the core).
     Modifies frame in-place.
     """
     h, w = frame.shape[:2]
@@ -151,6 +171,9 @@ def paint_dot(frame, cx, cy, radius, blur_sigma):
 
     if blur_sigma > 0:
         dot_layer = gaussian_filter(dot_layer, sigma=blur_sigma)
+
+    if brightness != 1.0:
+        dot_layer = np.clip(dot_layer * brightness, 0.0, 255.0)
 
     for c in range(3):
         ch = frame[:, :, c].astype(np.float32)
@@ -291,9 +314,11 @@ def run_animation(runs, output_path, config):
     from config import (
         ROUTE_COLOR_RAMP, BG_COLOR, GAMMA,
         ROUTE_LINE_THICKNESS,
+        DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_POWER, DENSITY_EXPAND_STRENGTH,
+        HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
         MAP_TILE_URL, MAP_TILE_CACHE, MAP_TILE_OPACITY, MAP_TILE_BRIGHTNESS,
         MAP_FONT_PATH, MAP_FONT_URL,
-        CANVAS_HEIGHT_PX, TYPOGRAPHY_SCALE, LEGEND_POSITION, LEGEND_WIDTH_SCALE,
+        CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, TYPOGRAPHY_SCALE, LEGEND_POSITION, LEGEND_WIDTH_SCALE,
         TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION, LEGEND_Y_OFFSET,
         CANVAS_ROTATION_DEGREES,
     )
@@ -302,6 +327,7 @@ def run_animation(runs, output_path, config):
     drawing_speed = config.ANIMATION_DRAWING_SPEED
     dot_radius = config.ANIMATION_DOT_RADIUS
     dot_blur = config.ANIMATION_DOT_BLUR
+    dot_brightness = getattr(config, "ANIMATION_DOT_BRIGHTNESS", 1.0)
     hold_seconds = config.ANIMATION_HOLD_SECONDS
     out_w, out_h = config.ANIMATION_OUTPUT_RESOLUTION
 
@@ -352,12 +378,17 @@ def run_animation(runs, output_path, config):
     map_arr = np.array(tile.resize((out_w, out_h)), dtype=np.float32)
 
     # ── Pre-render legend ─────────────────────────────────────────────────────
-    anim_scale = (out_h / CANVAS_HEIGHT_PX) * TYPOGRAPHY_SCALE
+    # Scale effects to animation canvas size (relative to print canvas)
+    px_scale = out_w / CANVAS_WIDTH_PX
+    line_thickness = max(1, round(ROUTE_LINE_THICKNESS * px_scale))
+    de_sigma = max(0.5, DENSITY_EXPAND_SIGMA * px_scale)
+    hb_sigma = 16.0 * HOT_BLOOM_SIGMA_MULT * px_scale  # 16.0 = bloom_sigma_wide default
+
     legend_base = Image.new("RGB", (out_w, out_h), (0, 0, 0))
     legend_img = render_legend(
         legend_base, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
         gamma=GAMMA, canvas_max_val=final_canvas_max,
-        scale=anim_scale, position=LEGEND_POSITION,
+        scale=TYPOGRAPHY_SCALE, position=LEGEND_POSITION,
         width_scale=LEGEND_WIDTH_SCALE,
         text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
         show_elevation=SHOW_ELEVATION,
@@ -395,7 +426,7 @@ def run_animation(runs, output_path, config):
                 buf = np.zeros((out_h, out_w), dtype=np.float32)
                 for (x0, y0), (x1, y1) in drawn:
                     cv2.line(buf, (int(x0), int(y0)), (int(x1), int(y1)),
-                             color=1.0, thickness=ROUTE_LINE_THICKNESS, lineType=cv2.LINE_AA)
+                             color=1.0, thickness=line_thickness, lineType=cv2.LINE_AA)
                 accumulation += buf
 
                 # Mileage for this frame
@@ -404,7 +435,15 @@ def run_animation(runs, output_path, config):
                     total_miles += frame_miles
 
                 # Build output frame
-                frame_rgb = canvas_to_rgb(accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR)
+                frame_rgb = canvas_to_rgb(
+                    accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR,
+                    density_expand_sigma=de_sigma,
+                    density_expand_power=DENSITY_EXPAND_POWER,
+                    density_expand_strength=DENSITY_EXPAND_STRENGTH,
+                    hot_bloom_sigma=hb_sigma,
+                    hot_bloom_threshold=HOT_BLOOM_THRESHOLD,
+                    hot_bloom_strength=HOT_BLOOM_STRENGTH,
+                )
                 frame_f = frame_rgb.astype(np.float32)
 
                 # Composite map tile (screen blend)
@@ -422,13 +461,13 @@ def run_animation(runs, output_path, config):
                 # Paint cursor dot at tip
                 if drawn:
                     tip_x, tip_y = drawn[-1][1]
-                    paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur)
+                    paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur, dot_brightness)
 
                 # Stamp live typography
                 pil_frame = Image.fromarray(frame_rgb, mode="RGB")
                 pil_frame = render_animation_typography(
                     pil_frame, month_year, run_count, int(math.floor(total_miles)),
-                    MAP_FONT_PATH, scale=anim_scale,
+                    MAP_FONT_PATH, scale=TYPOGRAPHY_SCALE,
                 )
                 frame_rgb = np.array(pil_frame)
 
