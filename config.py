@@ -160,7 +160,9 @@ MAP_FONT_URL  = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/st
 
 # ── Animation ─────────────────────────────────────────────────────────────────
 ANIMATION_FPS = 60
-ANIMATION_DRAWING_SPEED = 80   # pixels/frame at ANIMATION_OUTPUT_RESOLUTION; tune to hit ~60s
+ANIMATION_DRAWING_SPEED = 160  # pixels/frame at ANIMATION_OUTPUT_RESOLUTION; tune to hit ~60s
+ANIMATION_DRAWING_SPEED_SLOW = 10  # px/frame for first and last run (~1-3s depending on distance)
+ANIMATION_SPEED_RAMP_RUNS = 3  # runs over which speed ramps from slow → full after run 1 (and back)
 ANIMATION_DOT_RADIUS = 6       # cursor dot radius in pixels at ANIMATION_OUTPUT_RESOLUTION
 ANIMATION_DOT_BLUR = 4         # Gaussian sigma for dot halo; 0 = hard edge
 ANIMATION_DOT_BRIGHTNESS = 2.0 # multiply dot layer after blur to saturate the core; 1.0 = no boost

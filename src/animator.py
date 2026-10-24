@@ -289,6 +289,23 @@ def compute_total_frames(runs, renderer, drawing_speed):
     return int(total_px / drawing_speed) if drawing_speed > 0 else 0
 
 
+def _get_run_speed(run_idx, n_runs, fast_speed, slow_speed, ramp_runs):
+    """Return drawing speed (px/frame) for run at 0-based index run_idx.
+
+    First run: slow_speed. Ramps linearly to fast_speed over ramp_runs runs.
+    Last run: slow_speed. Ramps linearly back over ramp_runs runs.
+    """
+    dist_start = run_idx
+    dist_end = n_runs - 1 - run_idx
+    near = min(dist_start, dist_end)
+    if near == 0:
+        return slow_speed
+    if near < ramp_runs:
+        t = near / ramp_runs
+        return slow_speed + t * (fast_speed - slow_speed)
+    return fast_speed
+
+
 def _format_month_year(start_date):
     """Convert ISO date string to 'Mon YYYY' e.g. 'Mar 2019'."""
     from datetime import datetime
@@ -325,6 +342,8 @@ def run_animation(runs, output_path, config):
 
     fps = config.ANIMATION_FPS
     drawing_speed = config.ANIMATION_DRAWING_SPEED
+    slow_speed = getattr(config, "ANIMATION_DRAWING_SPEED_SLOW", drawing_speed)
+    ramp_runs = getattr(config, "ANIMATION_SPEED_RAMP_RUNS", 0)
     dot_radius = config.ANIMATION_DOT_RADIUS
     dot_blur = config.ANIMATION_DOT_BLUR
     dot_brightness = getattr(config, "ANIMATION_DOT_BRIGHTNESS", 1.0)
@@ -406,8 +425,42 @@ def run_animation(runs, output_path, config):
     frame_count = 0
     final_frame_bytes = None
 
+    def _build_frame(month_year_str):
+        """Composite the current accumulation state into a uint8 RGB frame."""
+        f = canvas_to_rgb(
+            accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR,
+            density_expand_sigma=de_sigma,
+            density_expand_power=DENSITY_EXPAND_POWER,
+            density_expand_strength=DENSITY_EXPAND_STRENGTH,
+            hot_bloom_sigma=hb_sigma,
+            hot_bloom_threshold=HOT_BLOOM_THRESHOLD,
+            hot_bloom_strength=HOT_BLOOM_STRENGTH,
+        )
+        f_f = f.astype(np.float32)
+        bg_f = np.zeros_like(f_f)
+        for c in range(3):
+            bg_f[:, :, c] = map_arr[:, :, c] * MAP_TILE_OPACITY
+        result = 255 - (255 - bg_f) * (255 - f_f) / 255
+        f = np.clip(result, 0, 255).astype(np.uint8)
+        f_f2 = f.astype(np.float32)
+        result2 = 255 - (255 - f_f2) * (255 - legend_arr) / 255
+        f = np.clip(result2, 0, 255).astype(np.uint8)
+        pil_f = Image.fromarray(f, mode="RGB")
+        pil_f = render_animation_typography(
+            pil_f, month_year_str, run_count, int(math.floor(total_miles)),
+            MAP_FONT_PATH, scale=TYPOGRAPHY_SCALE,
+        )
+        return np.array(pil_f)
+
     try:
-        for run in runs:
+        # ── Blank opening frame (0 runs, 0 miles, nothing drawn) ──────────────
+        first_month_year = _format_month_year(runs[0]["start_date"]) if runs else ""
+        opening = _build_frame(first_month_year)
+        proc.stdin.write(opening.tobytes())
+        frame_count += 1
+        final_frame_bytes = opening.tobytes()
+
+        for run_idx, run in enumerate(runs):
             geo_coords = run["coords"]
             if len(geo_coords) < 2:
                 run_count += 1
@@ -416,11 +469,12 @@ def run_animation(runs, output_path, config):
             px_coords = build_run_pixel_coords(run, anim_renderer)
             run_count += 1
             month_year = _format_month_year(run["start_date"])
+            run_speed = _get_run_speed(run_idx, len(runs), drawing_speed, slow_speed, ramp_runs)
 
             seg_idx, t = 0, 0.0
 
             while True:
-                new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, drawing_speed)
+                new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, run_speed)
 
                 # Draw segments onto accumulation canvas
                 buf = np.zeros((out_h, out_w), dtype=np.float32)
@@ -435,41 +489,12 @@ def run_animation(runs, output_path, config):
                     total_miles += frame_miles
 
                 # Build output frame
-                frame_rgb = canvas_to_rgb(
-                    accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR,
-                    density_expand_sigma=de_sigma,
-                    density_expand_power=DENSITY_EXPAND_POWER,
-                    density_expand_strength=DENSITY_EXPAND_STRENGTH,
-                    hot_bloom_sigma=hb_sigma,
-                    hot_bloom_threshold=HOT_BLOOM_THRESHOLD,
-                    hot_bloom_strength=HOT_BLOOM_STRENGTH,
-                )
-                frame_f = frame_rgb.astype(np.float32)
-
-                # Composite map tile (screen blend)
-                bg_f = np.zeros_like(frame_f)
-                for c in range(3):
-                    bg_f[:, :, c] = map_arr[:, :, c] * MAP_TILE_OPACITY
-                result = 255 - (255 - bg_f) * (255 - frame_f) / 255
-                frame_rgb = np.clip(result, 0, 255).astype(np.uint8)
-
-                # Composite static legend (screen blend)
-                frame_f2 = frame_rgb.astype(np.float32)
-                result2 = 255 - (255 - frame_f2) * (255 - legend_arr) / 255
-                frame_rgb = np.clip(result2, 0, 255).astype(np.uint8)
+                frame_rgb = _build_frame(month_year)
 
                 # Paint cursor dot at tip
                 if drawn:
                     tip_x, tip_y = drawn[-1][1]
                     paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur, dot_brightness)
-
-                # Stamp live typography
-                pil_frame = Image.fromarray(frame_rgb, mode="RGB")
-                pil_frame = render_animation_typography(
-                    pil_frame, month_year, run_count, int(math.floor(total_miles)),
-                    MAP_FONT_PATH, scale=TYPOGRAPHY_SCALE,
-                )
-                frame_rgb = np.array(pil_frame)
 
                 # Write frame
                 final_frame_bytes = frame_rgb.tobytes()
