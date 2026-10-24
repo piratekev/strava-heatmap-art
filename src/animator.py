@@ -157,14 +157,17 @@ def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color,
 
 # ── Dot rendering ─────────────────────────────────────────────────────────────
 
-def paint_dot(frame, cx, cy, radius, blur_sigma, brightness=1.0):
+def paint_dot(frame, cx, cy, radius, blur_sigma, brightness=1.0, alpha=1.0):
     """Paint a white circle onto frame (uint8 HxWx3) at (cx, cy).
 
     If blur_sigma > 0, apply Gaussian blur to the dot layer before compositing
     (screen blend) so the dot has a soft halo rather than a hard edge.
     brightness multiplies the dot layer after blur (>1 saturates the core).
+    alpha scales the final dot layer for fade-out (0.0 = invisible, 1.0 = full).
     Modifies frame in-place.
     """
+    if alpha <= 0:
+        return
     h, w = frame.shape[:2]
     dot_layer = np.zeros((h, w), dtype=np.float32)
     cv2.circle(dot_layer, (int(cx), int(cy)), int(radius), color=255.0, thickness=-1)
@@ -174,6 +177,9 @@ def paint_dot(frame, cx, cy, radius, blur_sigma, brightness=1.0):
 
     if brightness != 1.0:
         dot_layer = np.clip(dot_layer * brightness, 0.0, 255.0)
+
+    if alpha != 1.0:
+        dot_layer = dot_layer * alpha
 
     for c in range(3):
         ch = frame[:, :, c].astype(np.float32)
@@ -423,6 +429,10 @@ def run_animation(runs, output_path, config):
     total_miles = 0.0
     run_count = 0
     frame_count = 0
+    last_tip = None       # cursor position at end of final drawing frame
+    last_month_year = ""  # for fade / hold frame typography
+    decel_zone_px = out_w // 4  # pixels over which final run decelerates to ~1 px/frame
+    fade_frames = fps // 2      # dot fade-out duration (0.5 s)
 
     def _build_frame(month_year_str):
         """Composite the current accumulation state into a uint8 RGB frame."""
@@ -467,12 +477,32 @@ def run_animation(runs, output_path, config):
             px_coords = build_run_pixel_coords(run, anim_renderer)
             run_count += 1
             month_year = _format_month_year(run["start_date"])
+            last_month_year = month_year
             run_speed = _get_run_speed(run_idx, len(runs), drawing_speed, slow_speed, ramp_runs)
+
+            is_last_run = (run_idx == len(runs) - 1)
+            run_total_px = _path_length_px(px_coords) if is_last_run else 0.0
+            px_drawn_this_run = 0.0
 
             seg_idx, t = 0, 0.0
 
             while True:
-                new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, run_speed)
+                # Last run: decelerate linearly to 1 px/frame over the final decel_zone_px
+                if is_last_run and run_total_px > 0:
+                    px_remaining = run_total_px - px_drawn_this_run
+                    if px_remaining < decel_zone_px:
+                        frame_speed = max(1.0, run_speed * px_remaining / decel_zone_px)
+                    else:
+                        frame_speed = run_speed
+                else:
+                    frame_speed = run_speed
+
+                new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, frame_speed)
+
+                # Track pixels drawn (for decel calculation on last run)
+                if is_last_run and drawn:
+                    for (x0, y0), (x1, y1) in drawn:
+                        px_drawn_this_run += math.hypot(x1 - x0, y1 - y0)
 
                 # Draw segments onto accumulation canvas
                 buf = np.zeros((out_h, out_w), dtype=np.float32)
@@ -492,6 +522,7 @@ def run_animation(runs, output_path, config):
                 # Paint cursor dot at tip
                 if drawn:
                     tip_x, tip_y = drawn[-1][1]
+                    last_tip = (tip_x, tip_y)
                     paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur, dot_brightness)
 
                 # Write frame
@@ -501,6 +532,16 @@ def run_animation(runs, output_path, config):
                 seg_idx, t = new_seg, new_t
                 if seg_idx >= len(px_coords) - 2 and t >= 1.0:
                     break
+
+        # Dot fade-out: render the completed canvas with dot fading to invisible
+        if last_tip is not None and fade_frames > 0:
+            lx, ly = last_tip
+            for i in range(fade_frames):
+                alpha = 1.0 - (i + 1) / fade_frames
+                frame_rgb = _build_frame(last_month_year)
+                paint_dot(frame_rgb, lx, ly, dot_radius, dot_blur, dot_brightness, alpha=alpha)
+                proc.stdin.write(frame_rgb.tobytes())
+                frame_count += 1
 
         # Hold frames — rebuild final frame without dot
         if hold_frames > 0:
