@@ -103,7 +103,7 @@ DENSITY_EXPAND_POWER = 2.0
 
 # ── Hot bloom ────────────────────────────────────────────────────────────────
 # Adds an intense wide glow ONLY on white-hot (peak-density) pixels.
-# Regular bloom is disabled in export.py; this is the only glow that fires.
+# Regular bloom is disabled in render.py; this is the only glow that fires.
 
 # Normalised density above which hot bloom activates (0–1 scale after gamma).
 # With low GAMMA values (e.g. 0.4) the gamma lift pushes medium-density pixels

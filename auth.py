@@ -121,7 +121,7 @@ def main():
 
     print("Auth complete. Tokens saved to .env")
     print(f"  Athlete: {tokens['athlete']['firstname']} {tokens['athlete']['lastname']}")
-    print(f"  Run: python export.py --fetch")
+    print(f"  Run: python render.py --fetch")
 
 
 if __name__ == "__main__":
