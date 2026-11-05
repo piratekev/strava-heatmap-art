@@ -2,6 +2,8 @@
 
 Generate a print-quality running heatmap poster — or an animated timelapse MP4 — from your Strava data.
 
+https://github.com/user-attachments/assets/8e8825a0-4cb1-4dc9-b96f-c4a8dcb9a426
+
 ![San Francisco running heatmap](sf.png)
 
 NYC is also pre-configured — optimized to show the full NYC Marathon course (Staten Island → Brooklyn → Queens → Bronx → Manhattan), which one day they will let me run.
