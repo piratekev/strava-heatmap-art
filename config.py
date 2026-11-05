@@ -168,3 +168,7 @@ ANIMATION_DOT_BLUR = 4         # Gaussian sigma for dot halo; 0 = hard edge
 ANIMATION_DOT_BRIGHTNESS = 2.0 # multiply dot layer after blur to saturate the core; 1.0 = no boost
 ANIMATION_HOLD_SECONDS = 3     # seconds to hold on final frame
 ANIMATION_OUTPUT_RESOLUTION = (1080, 1350)  # (width, height) — 4:5 for Instagram
+
+# Parallel mode — all runs draw simultaneously, finishing proportional to length
+ANIMATION_PARALLEL_DURATION_S = 15  # drawing duration: longest run finishes at this time
+ANIMATION_PARALLEL_HOLD_S = 1       # hold duration after drawing completes (text fades in)

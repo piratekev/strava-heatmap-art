@@ -3,11 +3,12 @@
 Generate a timelapse animation from Strava running data.
 
 Usage:
-    python animate.py                      # SF, full render
-    python animate.py --config nyc         # NYC render
-    python animate.py --preview            # half resolution, no hold
-    python animate.py --fetch              # fetch new activities first
-    python animate.py --output foo.mp4    # custom output path
+    python animate.py                          # sequential mode, full render
+    python animate.py --mode parallel          # all runs draw simultaneously (15s)
+    python animate.py --config nyc             # NYC render
+    python animate.py --preview                # half resolution, no hold
+    python animate.py --fetch                  # fetch new activities first
+    python animate.py --output foo.mp4         # custom output path
 """
 import argparse
 import importlib
@@ -29,7 +30,7 @@ if _pre_args.config != "sf":
 import config as _cfg
 from src.fetcher import StravaClient, fetch_activities
 from src.processor import filter_sf_runs, decode_runs
-from src.animator import run_animation
+from src.animator import run_animation, run_parallel_animation
 from config import OUTPUT_DIR
 
 
@@ -37,6 +38,7 @@ def main():
     load_dotenv()
     parser = argparse.ArgumentParser(description="Generate Strava animation")
     parser.add_argument("--config", default="sf")
+    parser.add_argument("--mode", choices=["sequential", "parallel"], default="sequential")
     parser.add_argument("--fetch", action="store_true")
     parser.add_argument("--preview", action="store_true", help="Half resolution, no hold")
     parser.add_argument("--output", default=None)
@@ -69,13 +71,16 @@ def main():
         ANIMATION_DOT_BLUR = _cfg.ANIMATION_DOT_BLUR
         ANIMATION_HOLD_SECONDS = _cfg.ANIMATION_HOLD_SECONDS
         ANIMATION_OUTPUT_RESOLUTION = _cfg.ANIMATION_OUTPUT_RESOLUTION
+        ANIMATION_PARALLEL_DURATION_S = _cfg.ANIMATION_PARALLEL_DURATION_S
+        ANIMATION_PARALLEL_HOLD_S = _cfg.ANIMATION_PARALLEL_HOLD_S
 
     if args.preview:
         w, h = _cfg.ANIMATION_OUTPUT_RESOLUTION
         # yuv420p requires dimensions divisible by 2 — floor to nearest even
         AnimConfig.ANIMATION_OUTPUT_RESOLUTION = (w // 2 & ~1, h // 2 & ~1)
         AnimConfig.ANIMATION_HOLD_SECONDS = 0
-        print(f"Preview mode: {AnimConfig.ANIMATION_OUTPUT_RESOLUTION[0]}x{AnimConfig.ANIMATION_OUTPUT_RESOLUTION[1]}, no hold.")
+        AnimConfig.ANIMATION_PARALLEL_HOLD_S = 1  # keep text fade visible in preview
+        print(f"Preview mode: {AnimConfig.ANIMATION_OUTPUT_RESOLUTION[0]}x{AnimConfig.ANIMATION_OUTPUT_RESOLUTION[1]}")
 
     if args.output:
         out_path = args.output
@@ -83,10 +88,14 @@ def main():
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         config_tag = f"-{_pre_args.config}" if _pre_args.config != "sf" else ""
+        mode_tag = f"-{args.mode}" if args.mode != "sequential" else ""
         preview_tag = "-preview" if args.preview else ""
-        out_path = os.path.join(OUTPUT_DIR, f"animation{config_tag}{preview_tag}-{ts}.mp4")
+        out_path = os.path.join(OUTPUT_DIR, f"animation{config_tag}{mode_tag}{preview_tag}-{ts}.mp4")
 
-    run_animation(runs, out_path, AnimConfig)
+    if args.mode == "parallel":
+        run_parallel_animation(runs, out_path, AnimConfig)
+    else:
+        run_animation(runs, out_path, AnimConfig)
 
 
 if __name__ == "__main__":

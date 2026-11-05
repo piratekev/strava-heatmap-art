@@ -557,3 +557,193 @@ def run_animation(runs, output_path, config):
         proc.wait()
 
     print(f"Done. {frame_count + hold_frames} frames → {output_path}")
+
+
+# ── Parallel animation ────────────────────────────────────────────────────────
+
+def run_parallel_animation(runs, output_path, config):
+    """Run parallel animation: all runs draw simultaneously.
+
+    Each run's speed is normalized so the longest run finishes at
+    ANIMATION_PARALLEL_DURATION_S. Shorter runs finish proportionally earlier.
+    No cursor dot. Stats text fades in during the hold frames.
+    """
+    from src.renderer import StravaRenderer
+    from src.tiles import fetch_map_tile
+    from src.typography import render_legend, _download_font
+    from PIL import ImageEnhance
+    from config import (
+        ROUTE_COLOR_RAMP, BG_COLOR, GAMMA,
+        ROUTE_LINE_THICKNESS,
+        DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_POWER, DENSITY_EXPAND_STRENGTH,
+        HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
+        MAP_TILE_URL, MAP_TILE_CACHE, MAP_TILE_OPACITY, MAP_TILE_BRIGHTNESS,
+        MAP_FONT_PATH, MAP_FONT_URL,
+        CANVAS_WIDTH_PX, TYPOGRAPHY_SCALE, LEGEND_POSITION, LEGEND_WIDTH_SCALE,
+        TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION, LEGEND_Y_OFFSET,
+        CANVAS_ROTATION_DEGREES,
+    )
+
+    fps = config.ANIMATION_FPS
+    duration_s = getattr(config, "ANIMATION_PARALLEL_DURATION_S", 15)
+    hold_s = getattr(config, "ANIMATION_PARALLEL_HOLD_S", 1)
+    out_w, out_h = config.ANIMATION_OUTPUT_RESOLUTION
+
+    drawing_frames = int(duration_s * fps)
+    hold_frames = int(hold_s * fps)
+
+    if CANVAS_ROTATION_DEGREES != 0:
+        sys.exit(
+            f"ERROR: parallel animation does not support CANVAS_ROTATION_DEGREES={CANVAS_ROTATION_DEGREES}."
+        )
+
+    check_ffmpeg()
+
+    runs = sorted(runs, key=lambda r: r["start_date"])
+
+    # ── Pre-pass ──────────────────────────────────────────────────────────────
+    print("Pre-pass: rasterizing all runs to compute normalization anchor...")
+    pre_renderer = StravaRenderer(width=out_w, height=out_h)
+    pre_renderer.rasterize_all(runs)
+    final_canvas_max = float(pre_renderer.canvas.max())
+    final_log_max = float(np.log1p(pre_renderer.canvas).max())
+    if final_log_max == 0:
+        sys.exit("ERROR: No qualifying runs found after filtering. Nothing to animate.")
+    del pre_renderer
+
+    # ── Build pixel coords + path lengths ─────────────────────────────────────
+    anim_renderer = StravaRenderer(width=out_w, height=out_h)
+    px_scale = out_w / CANVAS_WIDTH_PX
+    line_thickness = max(1, round(ROUTE_LINE_THICKNESS * px_scale))
+    de_sigma = max(0.5, DENSITY_EXPAND_SIGMA * px_scale)
+    hb_sigma = 16.0 * HOT_BLOOM_SIGMA_MULT * px_scale
+
+    valid_runs = []
+    for run in runs:
+        if len(run["coords"]) < 2:
+            continue
+        px_coords = build_run_pixel_coords(run, anim_renderer)
+        length = _path_length_px(px_coords)
+        if length > 0:
+            valid_runs.append({"run": run, "px_coords": px_coords, "length": length})
+
+    if not valid_runs:
+        sys.exit("ERROR: No valid runs with drawable coordinates.")
+
+    max_length = max(r["length"] for r in valid_runs)
+    speed = max_length / drawing_frames  # px/frame — identical for all runs
+
+    # ── Stats for typography ──────────────────────────────────────────────────
+    total_miles = 0.0
+    for r in valid_runs:
+        coords = r["run"]["coords"]
+        for i in range(len(coords) - 1):
+            total_miles += haversine_miles(
+                coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]
+            )
+    first_date = _format_month_year(valid_runs[0]["run"]["start_date"])
+    last_date = _format_month_year(valid_runs[-1]["run"]["start_date"])
+    date_range_str = f"{first_date} – {last_date}"
+
+    print(
+        f"Parallel animation: {len(valid_runs)} runs, {drawing_frames} frames "
+        f"({duration_s}s at {fps}fps) + {hold_frames} hold frames"
+    )
+
+    # ── Map tile ──────────────────────────────────────────────────────────────
+    print("Fetching map tile...")
+    _download_font(MAP_FONT_PATH, MAP_FONT_URL)
+    cache_path = MAP_TILE_CACHE.replace(".png", "-anim-parallel.png")
+    tile = fetch_map_tile(
+        bounds=anim_renderer.bounds,
+        zoom=15,
+        cache_path=cache_path,
+        target_size=(out_w, out_h),
+        url_template=MAP_TILE_URL,
+    )
+    if MAP_TILE_BRIGHTNESS != 1.0:
+        tile = ImageEnhance.Brightness(tile).enhance(MAP_TILE_BRIGHTNESS)
+    map_arr = np.array(tile.resize((out_w, out_h)), dtype=np.float32)
+
+    # ── Pre-render legend ─────────────────────────────────────────────────────
+    legend_base = Image.new("RGB", (out_w, out_h), (0, 0, 0))
+    legend_img = render_legend(
+        legend_base, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
+        gamma=GAMMA, canvas_max_val=final_canvas_max,
+        scale=TYPOGRAPHY_SCALE, position=LEGEND_POSITION,
+        width_scale=LEGEND_WIDTH_SCALE,
+        text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
+        show_elevation=SHOW_ELEVATION,
+        y_offset=LEGEND_Y_OFFSET,
+    )
+    legend_arr = np.array(legend_img, dtype=np.float32)
+
+    accumulation = anim_renderer.canvas  # float32, starts at zero
+
+    def _build_frame():
+        arr = canvas_to_rgb(
+            accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR,
+            density_expand_sigma=de_sigma,
+            density_expand_power=DENSITY_EXPAND_POWER,
+            density_expand_strength=DENSITY_EXPAND_STRENGTH,
+            hot_bloom_sigma=hb_sigma,
+            hot_bloom_threshold=HOT_BLOOM_THRESHOLD,
+            hot_bloom_strength=HOT_BLOOM_STRENGTH,
+        ).astype(np.float32)
+        arr = 255 - (255 - map_arr) * (255 - arr) / 255
+        arr = 255 - (255 - arr) * (255 - legend_arr) / 255
+        return np.clip(arr, 0, 255).astype(np.uint8)
+
+    # ── Cursor states ─────────────────────────────────────────────────────────
+    cursor_states = [{"seg": 0, "t": 0.0, "done": False} for _ in valid_runs]
+
+    # ── Animation pass ────────────────────────────────────────────────────────
+    print(f"Rendering {len(valid_runs)} runs in parallel → {output_path}")
+    proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps)
+
+    try:
+        for _ in range(drawing_frames):
+            buf = np.zeros((out_h, out_w), dtype=np.float32)
+
+            for i, state in enumerate(cursor_states):
+                if state["done"]:
+                    continue
+                px_coords = valid_runs[i]["px_coords"]
+                new_seg, new_t, drawn = advance_cursor(
+                    px_coords, state["seg"], state["t"], speed
+                )
+                for (x0, y0), (x1, y1) in drawn:
+                    cv2.line(
+                        buf, (int(x0), int(y0)), (int(x1), int(y1)),
+                        color=1.0, thickness=line_thickness, lineType=cv2.LINE_AA,
+                    )
+                state["seg"] = new_seg
+                state["t"] = new_t
+                if new_seg >= len(px_coords) - 2 and new_t >= 1.0:
+                    state["done"] = True
+
+            accumulation += buf
+            proc.stdin.write(_build_frame().tobytes())
+
+        # ── Hold frames: text fades in ────────────────────────────────────────
+        if hold_frames > 0:
+            print(f"Writing {hold_frames} hold frames with text fade-in...")
+            frame_no_text = _build_frame().astype(np.float32)
+
+            pil_with_text = Image.fromarray(frame_no_text.astype(np.uint8), mode="RGB")
+            pil_with_text = render_animation_typography(
+                pil_with_text, date_range_str, len(valid_runs), int(total_miles),
+                MAP_FONT_PATH, scale=TYPOGRAPHY_SCALE,
+            )
+            frame_with_text = np.array(pil_with_text, dtype=np.float32)
+
+            for i in range(hold_frames):
+                alpha = i / max(hold_frames - 1, 1)
+                blended = frame_no_text * (1 - alpha) + frame_with_text * alpha
+                proc.stdin.write(np.clip(blended, 0, 255).astype(np.uint8).tobytes())
+
+    finally:
+        proc.stdin.close()
+        proc.wait()
+
+    print(f"Done. {drawing_frames + hold_frames} frames → {output_path}")
