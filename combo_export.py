@@ -27,13 +27,13 @@ from PIL import Image, ImageEnhance
 from src.processor import filter_sf_runs, decode_runs, load_bike_rides
 from src.renderer import StravaRenderer
 from src.tiles import fetch_map_tile
-from src.typography import render_typography, render_corner_legend, _download_font
+from src.typography import stats_lines, _download_font
+from src.combo_layout import draw_combo_text, draw_combo_legends
 from combo_config import (
     CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, OUTPUT_DIR, PRINT_DPI, BG_COLOR,
     MAP_TILE_OPACITY, MAP_TILE_CACHE, MAP_TILE_BRIGHTNESS, MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
-    TYPOGRAPHY_SCALE, TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION,
-    BIKE_RIDES_PATH, COMBO_LEGEND_WIDTH_SCALE, COMBO_CENTER_GAP,
+    SHOW_ELEVATION, BIKE_RIDES_PATH,
     RUN_COLOR_RAMP, RUN_GAMMA, RUN_HOT_BLOOM_THRESHOLD, RUN_HOT_BLOOM_SIGMA_MULT,
     BIKE_COLOR_RAMP, BIKE_GAMMA, BIKE_HOT_BLOOM_THRESHOLD, BIKE_HOT_BLOOM_SIGMA_MULT,
 )
@@ -121,25 +121,9 @@ def main():
     img = Image.fromarray(img_array, mode="RGB")
 
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
-    num_lines = 4 if SHOW_ELEVATION else 3
-    # Both blocks sit bottom-center, split by a gutter: runs right-aligned to the
-    # left of center, bikes left-aligned to the right of center.
-    half_gap = int(img.width * COMBO_CENTER_GAP / 2)
-    blocks = [
-        ("right", img.width // 2 - half_gap, city_runs, "runs",  RUN_COLOR_RAMP,  RUN_GAMMA,  run_max),
-        ("left",  img.width // 2 + half_gap, rides,     "rides", BIKE_COLOR_RAMP, BIKE_GAMMA, bike_max),
-    ]
-    for side, anchor_x, items, unit, ramp, gamma, max_val in blocks:
-        img = render_typography(img, items, font_path=MAP_FONT_PATH,
-                                scale=TYPOGRAPHY_SCALE, width_scale=TYPOGRAPHY_WIDTH_SCALE,
-                                show_elevation=SHOW_ELEVATION and unit == "runs",
-                                align=side, unit=unit, anchor_x=anchor_x,
-                                fixed_line_height=True)
-        img = render_corner_legend(img, color_ramp=ramp, font_path=MAP_FONT_PATH,
-                                   side=side, unit=unit, gamma=gamma, canvas_max_val=max_val,
-                                   scale=TYPOGRAPHY_SCALE, width_scale=COMBO_LEGEND_WIDTH_SCALE,
-                                   text_width_scale=TYPOGRAPHY_WIDTH_SCALE, num_lines=num_lines,
-                                   anchor_x=anchor_x)
+    img = draw_combo_text(img, stats_lines(city_runs, "runs", SHOW_ELEVATION),
+                          stats_lines(rides, "rides", show_elevation=False))
+    img = draw_combo_legends(img, run_max, bike_max)
 
     if args.output:
         out_path = args.output

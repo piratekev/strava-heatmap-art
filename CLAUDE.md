@@ -26,7 +26,11 @@ export.py        → orchestrates everything (--config sf|nyc selects city)
 | `config.py` | All tunable constants — canvas size, bounds, colors, effects |
 | `auth.py` | One-time OAuth flow — writes tokens to `.env` |
 | `export.py` | CLI entry point — wires pipeline together |
-| `combo_export.py` | Run + Baywheels combo poster: renders runs (green) and `../baywheels-art` rides (pink) as separate layers, screen-blends them on the SF map; run stats bottom-left, bike stats bottom-right |
+| `combo_export.py` | Run + Baywheels combo poster: renders runs (cyan) and `../baywheels-art` rides (Lyft pink) as separate layers, screen-blends them on the SF map; stats bottom-center (runs left, rides right) |
+| `combo_animate.py` | Combo animation CLI — 30s sequential build + 2s hold, 1080×1350 @ 30fps (`--preview` = half res) |
+| `src/combo_animator.py` | Combo animation: runs + rides merged by date, paced by activity count, each route drawn over `COMBO_ANIM_ROUTE_DRAW_S`; live-tallying poster stats |
+| `src/combo_layout.py` | Shared bottom-center stat blocks + legends for combo poster and animation |
+| `src/animator.py` | Animation helpers (cursor, `canvas_to_rgb`, dots, ffmpeg pipe) — copied from `amsterdam-oneoff`; `run_animation`/`run_parallel_animation` need config knobs not on this branch |
 | `combo_config.py` | Combo config — inherits SF, adds `BIKE_RIDES_PATH` and per-dataset `RUN_*` / `BIKE_*` ramp, gamma, hot-bloom values |
 | `garmin_fetch.py` | Standalone Garmin fetch CLI (`--since`, `--mfa` for non-TTY login) |
 | `src/sources.py` | `fetch_from_source()` — routes `--fetch` to Strava or Garmin per `FETCH_SOURCE` |

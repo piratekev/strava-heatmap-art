@@ -38,7 +38,7 @@ def _load_font(font_path, size):
 def render_typography(img, sf_runs, font_path,
                       text_color=(255, 255, 255), scale=1.0, width_scale=1.0,
                       x_offset=0, show_elevation=True, align="right", unit="runs",
-                      anchor_x=None, fixed_line_height=False):
+                      anchor_x=None, fixed_line_height=False, lines=None):
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
     All four lines use the same font size, aligned to the bottom-right corner
@@ -49,15 +49,12 @@ def render_typography(img, sf_runs, font_path,
     `fixed_line_height` spaces every line by the digit height instead of each line's
     own bbox, so side-by-side blocks line up even when one has a descender (",").
     Order top-to-bottom: year range → run count → distance (mi) → elevation (ft ↑).
+    `lines`, when given, is a list of strings drawn in place of the computed stats
+    (sf_runs is then ignored) — used by the animation for live, tallying values.
     Returns the modified image.
     """
-    years = sorted({r["start_date"][:4] for r in sf_runs})
-    year_range = f"{years[0]} \u2013 {years[-1]}" if len(years) > 1 else years[0]
-    total_runs = f"{len(sf_runs):,} {unit}"
-    total_miles = sum(r["distance"] for r in sf_runs) / METERS_PER_MILE
-    total_dist = f"{total_miles:,.0f} mi"
-    total_elev_ft = sum(r.get("total_elevation_gain", 0) for r in sf_runs) * 3.28084
-    total_elev = f"{total_elev_ft:,.0f} ft \u2191"
+    if lines is None:
+        lines = stats_lines(sf_runs, unit=unit, show_elevation=show_elevation)
 
     w, h = img.size
     font_size = int(max(10, h // 40) * scale * width_scale)
@@ -67,18 +64,11 @@ def render_typography(img, sf_runs, font_path,
 
     draw = ImageDraw.Draw(img)
     font = _load_font(font_path, font_size)
-
     shadow = (0, 0, 0)
-    lines = [
-        (year_range, font),
-        (total_runs,  font),
-        (total_dist,  font),
-    ]
-    if show_elevation:
-        lines.append((total_elev, font))
 
     y = h - margin
-    for text, f in reversed(lines):
+    for text in reversed(lines):
+        f = font
         bbox = draw.textbbox((0, 0), text, font=f)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
@@ -93,6 +83,26 @@ def render_typography(img, sf_runs, font_path,
         y -= line_gap
 
     return img
+
+
+def year_range_str(first_year, last_year):
+    """'2021 – 2024', or just '2021' when both ends are the same year."""
+    return f"{first_year} \u2013 {last_year}" if first_year != last_year else str(first_year)
+
+
+def stats_lines(sf_runs, unit="runs", show_elevation=True):
+    """Poster stat lines: year range, count, miles, and (optionally) elevation."""
+    years = sorted({r["start_date"][:4] for r in sf_runs})
+    total_miles = sum(r["distance"] for r in sf_runs) / METERS_PER_MILE
+    lines = [
+        year_range_str(years[0], years[-1]),
+        f"{len(sf_runs):,} {unit}",
+        f"{total_miles:,.0f} mi",
+    ]
+    if show_elevation:
+        total_elev_ft = sum(r.get("total_elevation_gain", 0) for r in sf_runs) * 3.28084
+        lines.append(f"{total_elev_ft:,.0f} ft \u2191")
+    return lines
 
 
 def _gradient_bar(color_ramp, bar_width, bar_height, t_min):
