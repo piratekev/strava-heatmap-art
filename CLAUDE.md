@@ -79,7 +79,7 @@ Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediat
 - `PRINT_DPI` — DPI tag written to the PNG (affects print size, not pixel count).
 
 ### Color
-- `ROUTE_COLOR_RAMP` — list of `(t, [R, G, B])` stops. `t` is a normalized density value [0, 1] after log1p compression and gamma. With `GAMMA=0.4`, a single-run route lands around `t ≈ 0.45`, so set the first stop there to control the lowest visible color.
+- `ROUTE_COLOR_RAMP` — list of `(t, [R, G, B])` stops. `t` is a normalized density value [0, 1] after log1p compression and gamma. SF's default (`GAMMA=0.6`, green ramp) keeps single-run routes dim rather than lifting them toward the first color stop; raise the first stop's `t` if you want sparse routes more visible. NYC overrides this back to the original `GAMMA=0.4` / indigo-violet-pink ramp in `nyc_config.py` to keep its look unchanged.
 - `BG_COLOR` — background RGB.
 
 ### Line drawing
@@ -93,7 +93,7 @@ Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediat
 - `DENSITY_EXPAND_POWER` — exponent applied to norm before expanding; concentrates effect on peaks.
 
 ### Hot bloom (glow on peak-density routes)
-- `HOT_BLOOM_THRESHOLD` — density cutoff (post-gamma) to trigger hot bloom. With `GAMMA=0.4`, keep this at 0.75+ to avoid bloom firing on medium routes.
+- `HOT_BLOOM_THRESHOLD` — density cutoff (post-gamma) to trigger hot bloom. SF's default is 0.92 (paired with `GAMMA=0.6`) so the glow concentrates on the single hottest corridor; NYC overrides back to the older 0.75/`GAMMA=0.4` pairing.
 - `HOT_BLOOM_SIGMA_MULT` — width of bloom Gaussian as a multiplier of `bloom_sigma_wide` in renderer.
 - `HOT_BLOOM_STRENGTH` — screen-blend intensity of the bloom layer.
 
