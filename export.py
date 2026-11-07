@@ -6,7 +6,7 @@ Usage:
     python export.py                      # SF, full render
     python export.py --config nyc         # NYC render
     python export.py --preview            # 1/10 scale for quick iteration
-    python export.py --fetch              # fetch new activities first
+    python export.py --fetch              # fetch new activities first (FETCH_SOURCE in config)
     python export.py --no-map
     python export.py --no-bloom --no-grain --no-glow
 """
@@ -32,7 +32,7 @@ if _pre_args.config != "sf":
 import numpy as np
 from PIL import Image
 
-from src.fetcher import StravaClient, fetch_activities
+from src.sources import fetch_from_source
 from src.processor import filter_sf_runs, decode_runs
 from src.renderer import StravaRenderer
 from src.tiles import fetch_map_tile
@@ -46,6 +46,7 @@ from config import (
     TYPOGRAPHY_SCALE, TYPOGRAPHY_WIDTH_SCALE, TYPOGRAPHY_X_OFFSET,
     LEGEND_POSITION, LEGEND_WIDTH_SCALE,
     SHOW_ELEVATION, LEGEND_Y_OFFSET,
+    FETCH_SOURCE,
 )
 
 
@@ -73,14 +74,7 @@ def main():
     args = parser.parse_args()
 
     if args.fetch:
-        print("Fetching activities from Strava...")
-        try:
-            client = StravaClient.from_env()
-        except KeyError as e:
-            print(f"ERROR: Missing token {e} in .env")
-            print("Run 'python auth.py' first to authenticate with Strava.")
-            sys.exit(1)
-        fetch_activities(client)
+        fetch_from_source(FETCH_SOURCE)
 
     with open("data/activities.json") as f:
         activities = json.load(f)

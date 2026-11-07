@@ -120,6 +120,10 @@ def fetch_activities(client, cache_dir="data"):
         new_activities.extend(batch)
         page += 1
 
+    # Strava copies supersede any Garmin-fallback entries for the same activity
+    new_external_ids = {a.get("external_id") for a in new_activities}
+    existing = [a for a in existing
+                if not (a.get("source") == "garmin" and a.get("external_id") in new_external_ids)]
     all_activities = existing + new_activities
 
     # Save cache
