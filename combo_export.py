@@ -4,8 +4,8 @@ Generate a combined run + Baywheels bike heatmap poster on the SF map.
 
 Runs come from data/activities.json (this repo); rides from BIKE_RIDES_PATH
 (../baywheels-art). Each dataset is rendered with its own palette, the two
-layers are screen-blended, then composited onto the map. Run stats go in the
-bottom-left corner, bike stats in the bottom-right.
+layers are screen-blended, then composited onto the map. Stats sit bottom-center:
+runs left of center, bikes right of center.
 
 Usage:
     python combo_export.py               # full render
@@ -33,7 +33,7 @@ from combo_config import (
     MAP_TILE_OPACITY, MAP_TILE_CACHE, MAP_TILE_BRIGHTNESS, MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
     TYPOGRAPHY_SCALE, TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION,
-    BIKE_RIDES_PATH, COMBO_LEGEND_WIDTH_SCALE,
+    BIKE_RIDES_PATH, COMBO_LEGEND_WIDTH_SCALE, COMBO_CENTER_GAP,
     RUN_COLOR_RAMP, RUN_GAMMA, RUN_HOT_BLOOM_THRESHOLD, RUN_HOT_BLOOM_SIGMA_MULT,
     BIKE_COLOR_RAMP, BIKE_GAMMA, BIKE_HOT_BLOOM_THRESHOLD, BIKE_HOT_BLOOM_SIGMA_MULT,
 )
@@ -122,19 +122,24 @@ def main():
 
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
     num_lines = 4 if SHOW_ELEVATION else 3
-    corners = [
-        ("left",  city_runs, "runs",  RUN_COLOR_RAMP,  RUN_GAMMA,  run_max),
-        ("right", rides,     "rides", BIKE_COLOR_RAMP, BIKE_GAMMA, bike_max),
+    # Both blocks sit bottom-center, split by a gutter: runs right-aligned to the
+    # left of center, bikes left-aligned to the right of center.
+    half_gap = int(img.width * COMBO_CENTER_GAP / 2)
+    blocks = [
+        ("right", img.width // 2 - half_gap, city_runs, "runs",  RUN_COLOR_RAMP,  RUN_GAMMA,  run_max),
+        ("left",  img.width // 2 + half_gap, rides,     "rides", BIKE_COLOR_RAMP, BIKE_GAMMA, bike_max),
     ]
-    for side, items, unit, ramp, gamma, max_val in corners:
+    for side, anchor_x, items, unit, ramp, gamma, max_val in blocks:
         img = render_typography(img, items, font_path=MAP_FONT_PATH,
                                 scale=TYPOGRAPHY_SCALE, width_scale=TYPOGRAPHY_WIDTH_SCALE,
                                 show_elevation=SHOW_ELEVATION and unit == "runs",
-                                align=side, unit=unit)
+                                align=side, unit=unit, anchor_x=anchor_x,
+                                fixed_line_height=True)
         img = render_corner_legend(img, color_ramp=ramp, font_path=MAP_FONT_PATH,
                                    side=side, unit=unit, gamma=gamma, canvas_max_val=max_val,
                                    scale=TYPOGRAPHY_SCALE, width_scale=COMBO_LEGEND_WIDTH_SCALE,
-                                   text_width_scale=TYPOGRAPHY_WIDTH_SCALE, num_lines=num_lines)
+                                   text_width_scale=TYPOGRAPHY_WIDTH_SCALE, num_lines=num_lines,
+                                   anchor_x=anchor_x)
 
     if args.output:
         out_path = args.output

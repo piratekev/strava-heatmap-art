@@ -37,12 +37,17 @@ def _load_font(font_path, size):
 
 def render_typography(img, sf_runs, font_path,
                       text_color=(255, 255, 255), scale=1.0, width_scale=1.0,
-                      x_offset=0, show_elevation=True, align="right", unit="runs"):
+                      x_offset=0, show_elevation=True, align="right", unit="runs",
+                      anchor_x=None, fixed_line_height=False):
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
     All four lines use the same font size, aligned to the bottom-right corner
     (align="right", default) or bottom-left corner (align="left").
     `unit` is the count label ("runs", "rides").
+    `anchor_x`, when set, replaces the canvas edge as the alignment line: lines end
+    at anchor_x (align="right") or start at it (align="left").
+    `fixed_line_height` spaces every line by the digit height instead of each line's
+    own bbox, so side-by-side blocks line up even when one has a descender (",").
     Order top-to-bottom: year range → run count → distance (mi) → elevation (ft ↑).
     Returns the modified image.
     """
@@ -77,10 +82,11 @@ def render_typography(img, sf_runs, font_path,
         bbox = draw.textbbox((0, 0), text, font=f)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
-        if align == "left":
-            x = margin + x_offset
-        else:
-            x = w - margin - text_w + x_offset
+        if fixed_line_height:
+            ref = draw.textbbox((0, 0), "0123456789", font=f)
+            text_h = ref[3] - ref[1]
+        edge = anchor_x if anchor_x is not None else (margin if align == "left" else w - margin)
+        x = (edge if align == "left" else edge - text_w) + x_offset
         y -= text_h
         draw.text((x + shadow_offset, y + shadow_offset), text, font=f, fill=shadow)
         draw.text((x, y), text, font=f, fill=text_color)
@@ -122,10 +128,11 @@ def _single_route_t(gamma, canvas_max_val):
 def render_corner_legend(img, color_ramp, font_path, side="right", unit="runs",
                          text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None,
                          scale=1.0, width_scale=1.0, text_width_scale=1.0,
-                         num_lines=3, x_offset=0, y_offset=0):
+                         num_lines=3, x_offset=0, y_offset=0, anchor_x=None):
     """
     Draw a gradient legend directly above a corner typography block (the one
     render_typography(align=side) draws), aligned to the same side.
+    `anchor_x` works as in render_typography (alignment line instead of canvas edge).
     Labels: "1 <unit singular>" on the left, "100+ <unit>" on the right.
     """
     w, h = img.size
@@ -141,7 +148,8 @@ def render_corner_legend(img, color_ramp, font_path, side="right", unit="runs",
 
     legend_h = bar_height + label_gap + font_size
     bar_top  = block_top - main_line_gap * 3 - legend_h + y_offset
-    bar_left = margin + x_offset if side == "left" else w - margin - bar_width + x_offset
+    edge = anchor_x if anchor_x is not None else (margin if side == "left" else w - margin)
+    bar_left = (edge if side == "left" else edge - bar_width) + x_offset
     bar_right = bar_left + bar_width
 
     t_min = _single_route_t(gamma, canvas_max_val)
