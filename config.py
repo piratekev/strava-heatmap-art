@@ -124,6 +124,10 @@ HOT_BLOOM_STRENGTH = 4.0
 # Background color
 BG_COLOR = [0, 0, 0]  # pure black
 
+# Activity source used by --fetch: "strava" (API, needs auth.py) or "garmin"
+# (Garmin Connect, login saved to ~/.garminconnect — see garmin_fetch.py).
+FETCH_SOURCE = "strava"
+
 # Strava API
 STRAVA_BASE_URL = "https://www.strava.com/api/v3"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
