@@ -37,16 +37,18 @@ def _load_font(font_path, size):
 
 def render_typography(img, sf_runs, font_path,
                       text_color=(255, 255, 255), scale=1.0, width_scale=1.0,
-                      x_offset=0, show_elevation=True):
+                      x_offset=0, show_elevation=True, align="right", unit="runs"):
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
-    All four lines use the same font size, right-aligned in the bottom-right corner.
+    All four lines use the same font size, aligned to the bottom-right corner
+    (align="right", default) or bottom-left corner (align="left").
+    `unit` is the count label ("runs", "rides").
     Order top-to-bottom: year range → run count → distance (mi) → elevation (ft ↑).
     Returns the modified image.
     """
     years = sorted({r["start_date"][:4] for r in sf_runs})
     year_range = f"{years[0]} \u2013 {years[-1]}" if len(years) > 1 else years[0]
-    total_runs = f"{len(sf_runs):,} runs"
+    total_runs = f"{len(sf_runs):,} {unit}"
     total_miles = sum(r["distance"] for r in sf_runs) / METERS_PER_MILE
     total_dist = f"{total_miles:,.0f} mi"
     total_elev_ft = sum(r.get("total_elevation_gain", 0) for r in sf_runs) * 3.28084
@@ -75,12 +77,89 @@ def render_typography(img, sf_runs, font_path,
         bbox = draw.textbbox((0, 0), text, font=f)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
-        x = w - margin - text_w + x_offset
+        if align == "left":
+            x = margin + x_offset
+        else:
+            x = w - margin - text_w + x_offset
         y -= text_h
         draw.text((x + shadow_offset, y + shadow_offset), text, font=f, fill=shadow)
         draw.text((x, y), text, font=f, fill=text_color)
         y -= line_gap
 
+    return img
+
+
+def _gradient_bar(color_ramp, bar_width, bar_height, t_min):
+    """Build a bar_width × bar_height image sweeping color_ramp from t_min → 1.0."""
+    bar_img    = Image.new("RGB", (bar_width, bar_height))
+    bar_pixels = bar_img.load()
+    for px in range(bar_width):
+        t = px / max(bar_width - 1, 1)
+        t_ramp = t_min + t * (1.0 - t_min)   # sweep t_min → 1.0
+        r, g, b = color_ramp[0][1]
+        for i in range(len(color_ramp) - 1):
+            t0, c0 = color_ramp[i]
+            t1, c1 = color_ramp[i + 1]
+            if t0 <= t_ramp <= t1:
+                alpha = (t_ramp - t0) / (t1 - t0)
+                r = int(c0[0] * (1 - alpha) + c1[0] * alpha)
+                g = int(c0[1] * (1 - alpha) + c1[1] * alpha)
+                b = int(c0[2] * (1 - alpha) + c1[2] * alpha)
+                break
+        for py in range(bar_height):
+            bar_pixels[px, py] = (r, g, b)
+    return bar_img
+
+
+def _single_route_t(gamma, canvas_max_val):
+    """Ramp position a single-pass route produces after log1p normalize + gamma."""
+    import math
+    if canvas_max_val is not None and canvas_max_val > 1:
+        return (math.log1p(1.0) / math.log1p(float(canvas_max_val))) ** gamma
+    return 0.0
+
+
+def render_corner_legend(img, color_ramp, font_path, side="right", unit="runs",
+                         text_color=(255, 255, 255), gamma=GAMMA, canvas_max_val=None,
+                         scale=1.0, width_scale=1.0, text_width_scale=1.0,
+                         num_lines=3, x_offset=0, y_offset=0):
+    """
+    Draw a gradient legend directly above a corner typography block (the one
+    render_typography(align=side) draws), aligned to the same side.
+    Labels: "1 <unit singular>" on the left, "100+ <unit>" on the right.
+    """
+    w, h = img.size
+    font_size  = int(max(9,  h * 3 // 200) * scale)
+    margin     = int(max(10, h // 25) * scale)
+    bar_height = int(max(6,  h * 3 // 400) * scale)
+    bar_width  = int(w * 3 // 8 * width_scale)
+    label_gap  = int(max(6,  h // 200) * scale)
+
+    main_font_size = int(max(10, h // 40) * scale * text_width_scale)
+    main_line_gap  = int(max(8,  h // 120) * scale)
+    block_top = h - margin - num_lines * main_font_size - (num_lines - 1) * main_line_gap
+
+    legend_h = bar_height + label_gap + font_size
+    bar_top  = block_top - main_line_gap * 3 - legend_h + y_offset
+    bar_left = margin + x_offset if side == "left" else w - margin - bar_width + x_offset
+    bar_right = bar_left + bar_width
+
+    t_min = _single_route_t(gamma, canvas_max_val)
+    img.paste(_gradient_bar(color_ramp, bar_width, bar_height, t_min), (bar_left, bar_top))
+
+    draw = ImageDraw.Draw(img)
+    font = _load_font(font_path, font_size)
+    shadow = (0, 0, 0)
+    shadow_offset = max(1, h // 3600)
+    label_y = bar_top + bar_height + label_gap
+    singular = unit[:-1] if unit.endswith("s") else unit
+    left_label, right_label = f"1 {singular}", f"100+ {unit}"
+    draw.text((bar_left + shadow_offset, label_y + shadow_offset), left_label, font=font, fill=shadow)
+    draw.text((bar_left, label_y), left_label, font=font, fill=text_color)
+    rb = draw.textbbox((0, 0), right_label, font=font)
+    right_x = bar_right - (rb[2] - rb[0])
+    draw.text((right_x + shadow_offset, label_y + shadow_offset), right_label, font=font, fill=shadow)
+    draw.text((right_x, label_y), right_label, font=font, fill=text_color)
     return img
 
 
@@ -133,29 +212,8 @@ def render_legend(img, color_ramp, font_path,
     bar_right = bar_left + bar_width
 
     # t_min: the ramp position a single-run route produces after log+gamma
-    if canvas_max_val is not None and canvas_max_val > 1:
-        t_min = (math.log1p(1.0) / math.log1p(float(canvas_max_val))) ** gamma
-    else:
-        t_min = 0.0
-
-    # Build gradient by interpolating color_ramp from t_min → 1.0
-    bar_img    = Image.new("RGB", (bar_width, bar_height))
-    bar_pixels = bar_img.load()
-    for px in range(bar_width):
-        t = px / max(bar_width - 1, 1)
-        t_ramp = t_min + t * (1.0 - t_min)   # sweep t_min → 1.0
-        r, g, b = color_ramp[0][1]
-        for i in range(len(color_ramp) - 1):
-            t0, c0 = color_ramp[i]
-            t1, c1 = color_ramp[i + 1]
-            if t0 <= t_ramp <= t1:
-                alpha = (t_ramp - t0) / (t1 - t0)
-                r = int(c0[0] * (1 - alpha) + c1[0] * alpha)
-                g = int(c0[1] * (1 - alpha) + c1[1] * alpha)
-                b = int(c0[2] * (1 - alpha) + c1[2] * alpha)
-                break
-        for py in range(bar_height):
-            bar_pixels[px, py] = (r, g, b)
+    t_min = _single_route_t(gamma, canvas_max_val)
+    bar_img = _gradient_bar(color_ramp, bar_width, bar_height, t_min)
 
     img.paste(bar_img, (bar_left, bar_top))
 

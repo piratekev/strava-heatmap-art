@@ -26,6 +26,8 @@ export.py        → orchestrates everything (--config sf|nyc selects city)
 | `config.py` | All tunable constants — canvas size, bounds, colors, effects |
 | `auth.py` | One-time OAuth flow — writes tokens to `.env` |
 | `export.py` | CLI entry point — wires pipeline together |
+| `combo_export.py` | Run + Baywheels combo poster: renders runs (green) and `../baywheels-art` rides (pink) as separate layers, screen-blends them on the SF map; run stats bottom-left, bike stats bottom-right |
+| `combo_config.py` | Combo config — inherits SF, adds `BIKE_RIDES_PATH` and per-dataset `RUN_*` / `BIKE_*` ramp, gamma, hot-bloom values |
 | `garmin_fetch.py` | Standalone Garmin fetch CLI (`--since`, `--mfa` for non-TTY login) |
 | `src/sources.py` | `fetch_from_source()` — routes `--fetch` to Strava or Garmin per `FETCH_SOURCE` |
 | `src/fetcher.py` | `StravaClient` + `fetch_activities()` with incremental cache |

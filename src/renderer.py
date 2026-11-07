@@ -198,8 +198,16 @@ class StravaRenderer:
                  bloom_strength=0.6, glow=True, glow_strength=1.0,
                  vignette=True, vignette_strength=0.5,
                  grain=True, grain_amount=0.025,
-                 gamma=GAMMA, hot_bloom=True, density_expand=True):
-        """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8."""
+                 gamma=GAMMA, hot_bloom=True, density_expand=True,
+                 color_ramp=None, hot_bloom_threshold=None, hot_bloom_sigma_mult=None):
+        """Normalize density canvas, apply color ramp and effects. Returns HxWx3 uint8.
+
+        color_ramp / hot_bloom_threshold / hot_bloom_sigma_mult default to the config
+        values; pass them to render several datasets with different palettes (combo).
+        """
+        color_ramp = ROUTE_COLOR_RAMP if color_ramp is None else color_ramp
+        hb_threshold = HOT_BLOOM_THRESHOLD if hot_bloom_threshold is None else hot_bloom_threshold
+        hb_sigma_mult = HOT_BLOOM_SIGMA_MULT if hot_bloom_sigma_mult is None else hot_bloom_sigma_mult
         bg = np.array(BG_COLOR, dtype=np.float32)
         max_val = self.canvas.max()
         if max_val == 0:
@@ -221,13 +229,13 @@ class StravaRenderer:
 
         if hot_bloom:
             hot_mask = np.clip(
-                (norm - HOT_BLOOM_THRESHOLD) / (1.0 - HOT_BLOOM_THRESHOLD), 0, 1
+                (norm - hb_threshold) / (1.0 - hb_threshold), 0, 1
             )
-            hot_layer = gaussian_filter(hot_mask, sigma=bloom_sigma_wide * HOT_BLOOM_SIGMA_MULT)
+            hot_layer = gaussian_filter(hot_mask, sigma=bloom_sigma_wide * hb_sigma_mult)
             norm = 1 - (1 - norm) * (1 - hot_layer * HOT_BLOOM_STRENGTH)
 
         norm = np.clip(norm, 0.0, 1.0)  # screen-blend ops can push norm > 1; clamp before colour mapping
-        route_colors = _ramp_colors(norm, ROUTE_COLOR_RAMP)
+        route_colors = _ramp_colors(norm, color_ramp)
         rgb = np.zeros((self.height, self.width, 3), dtype=np.float32)
         for c in range(3):
             rgb[:, :, c] = bg[c] * (1 - norm) + route_colors[:, :, c] * norm
