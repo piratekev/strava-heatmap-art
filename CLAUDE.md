@@ -10,7 +10,9 @@ Fetches a user's Strava running activities, filters them to a geographic boundin
 ```
 auth.py          → writes tokens to .env (run once)
 export.py        → orchestrates everything (--config sf|nyc selects city)
+  src/sources.py → --fetch dispatch on config.FETCH_SOURCE ("strava" | "garmin")
   src/fetcher.py → fetch & cache activities from Strava API
+  src/garmin.py  → Garmin Connect fallback (converts to Strava schema)
   src/processor.py → filter by city bounds + decode polylines
   src/renderer.py  → rasterize routes → post-process (bloom, grain, glow)
   src/tiles.py     → fetch & cache OpenStreetMap background tiles
@@ -24,7 +26,10 @@ export.py        → orchestrates everything (--config sf|nyc selects city)
 | `config.py` | All tunable constants — canvas size, bounds, colors, effects |
 | `auth.py` | One-time OAuth flow — writes tokens to `.env` |
 | `export.py` | CLI entry point — wires pipeline together |
+| `garmin_fetch.py` | Standalone Garmin fetch CLI (`--since`, `--mfa` for non-TTY login) |
+| `src/sources.py` | `fetch_from_source()` — routes `--fetch` to Strava or Garmin per `FETCH_SOURCE` |
 | `src/fetcher.py` | `StravaClient` + `fetch_activities()` with incremental cache |
+| `src/garmin.py` | Garmin Connect fetch → Strava-shaped records appended to `data/activities.json` |
 | `src/processor.py` | `filter_sf_runs()` centroid filter + `decode_runs()` polyline decoder |
 | `src/renderer.py` | `StravaRenderer`: rasterize → density expand → hot bloom → color map |
 | `src/tiles.py` | Fetch and stitch CARTO map tiles |
@@ -110,6 +115,8 @@ Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediat
 **Bloom is disabled in `export.py`**: The `--no-bloom` flag in `export.py` always passes `bloom=False` to `to_image()`. Regular bloom was removed as it caused halos on single isolated pixels. `hot_bloom` is kept — it fires only above `HOT_BLOOM_THRESHOLD`.
 
 **Density expand pass order** in `renderer.to_image()`: rasterize → log1p normalize → gamma → density expand (Gaussian thickening) → hot bloom → color map → grain → vignette. Density expand runs after gamma on the gamma-corrected normalized canvas.
+
+**Garmin source** (`src/garmin.py`): `FETCH_SOURCE = "garmin"` (or `garmin_fetch.py`) pulls runs since the latest cached activity via the `garminconnect` library, converts each to the subset of the Strava schema the pipeline reads (`sport_type`, `map.summary_polyline`, `distance`, `start_date`, …), tagged `source: "garmin"`. Dedupe is by Garmin ID (Strava's `external_id` is `garmin_ping_<id>`) or start time within 60 s. A later Strava fetch replaces Garmin entries with matching `external_id`. Login tokens live in `~/.garminconnect`; first login needs `GARMIN_EMAIL`/`GARMIN_PASSWORD` (prompt or `.env`) and MFA — without a TTY, run `garmin_fetch.py` once, then `garmin_fetch.py --mfa <code>`.
 
 **Token refresh** (`src/fetcher.py:_update_env_tokens`): when the access token expires mid-fetch, `StravaClient.refresh_access_token()` POSTs to Strava and writes the new tokens back to `.env` in-place. It only updates existing lines — auth.py must have written them first.
 
