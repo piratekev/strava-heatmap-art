@@ -29,9 +29,14 @@ BIKE_GAMMA = 0.5               # baywheels-art uses 0.4; toned down so runs aren
 BIKE_HOT_BLOOM_THRESHOLD = 0.85  # baywheels-art uses 0.75
 BIKE_HOT_BLOOM_SIGMA_MULT = 5.0
 
-# ── Typography: both blocks bottom-center, runs left of center, bikes right ──
-# Elevation is off so both blocks are the same 3 lines (years / count / miles).
+# ── Typography ───────────────────────────────────────────────────────────────
+# One combined year range top-center (over the bay); two stat blocks bottom-center
+# (count / miles), runs left of center, bikes right; color legends underneath.
 SHOW_ELEVATION = False
+
+# Size of the top-center year range / animation month line, relative to stat text.
+COMBO_DATE_SCALE = 1.2
+COMBO_MONTH_SCALE = 0.7
 
 # Gutter between the two blocks, as a fraction of canvas width.
 COMBO_CENTER_GAP = 0.08
@@ -48,4 +53,6 @@ COMBO_ANIM_FPS = 30
 COMBO_ANIM_DURATION_S = 30            # drawing time
 COMBO_ANIM_HOLD_S = 2                 # hold on the finished map
 COMBO_ANIM_ROUTE_DRAW_S = 0.6         # time for one route to draw start → end
-COMBO_ANIM_TRACER_RADIUS = 2          # px, white dot at each growing route's tip
+COMBO_ANIM_TRACER_RADIUS = 2          # px, dot at each growing route's tip
+# Tracer dot colors per layer — bright versions of each ramp so runs/rides read apart.
+COMBO_ANIM_DOT_COLORS = {"run": [90, 235, 255], "bike": [255, 70, 215]}

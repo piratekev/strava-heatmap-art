@@ -12,6 +12,7 @@ Callers must set sys.modules["config"] = combo_config before importing.
 import math
 import sys
 import time
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -27,9 +28,9 @@ from config import (
     BIKE_COLOR_RAMP, BIKE_GAMMA, BIKE_HOT_BLOOM_THRESHOLD, BIKE_HOT_BLOOM_SIGMA_MULT,
 )
 from src.animator import (
-    advance_cursor, canvas_to_rgb, paint_dots_batch, check_ffmpeg, open_ffmpeg_pipe,
+    advance_cursor, canvas_to_rgb, check_ffmpeg, open_ffmpeg_pipe,
 )
-from src.combo_layout import draw_combo_text, draw_combo_legends
+from src.combo_layout import draw_combo_text, draw_combo_legends, draw_combo_date
 from src.renderer import StravaRenderer
 from src.tiles import fetch_map_tile
 from src.typography import stats_lines, year_range_str, _download_font
@@ -57,14 +58,30 @@ def schedule_start_frames(n, drawing_frames, draw_frames):
 
 
 def live_lines(kind_state, unit):
-    """Poster-style stat lines from live tallies:
-    kind_state = {"first_year", "last_year" (None until one starts), "count", "meters"}."""
-    last = kind_state["last_year"] or kind_state["first_year"]
+    """Stat block lines from live tallies: kind_state = {"count", "meters"}."""
     return [
-        year_range_str(kind_state["first_year"], last),
         f"{kind_state['count']:,} {unit}",
         f"{kind_state['meters'] / METERS_PER_MILE:,.0f} mi",
     ]
+
+
+def month_label(start_date):
+    """'2024-03-15T…' → 'Mar 2024'."""
+    return datetime.strptime(start_date[:7], "%Y-%m").strftime("%b %Y")
+
+
+def paint_colored_dots(frame, tips_by_kind, radius, colors):
+    """Screen-blend a hard-edged dot at each tip, colored per layer (runs vs rides)."""
+    h, w = frame.shape[:2]
+    out = frame.astype(np.float32)
+    for kind, tips in tips_by_kind.items():
+        if not tips:
+            continue
+        mask = np.zeros((h, w), dtype=np.float32)
+        for x, y in tips:
+            cv2.circle(mask, (int(round(x)), int(round(y))), radius, 1.0, -1, lineType=cv2.LINE_AA)
+        out = _screen(out, mask[:, :, None] * np.array(colors[kind], dtype=np.float32))
+    frame[:] = np.clip(out, 0, 255).astype(np.uint8)
 
 
 def _screen(a, b):
@@ -138,7 +155,10 @@ def _assign_thickness(routes, shape, px_scale):
 # ── Main loop ────────────────────────────────────────────────────────────────
 
 def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, hold_s,
-                        route_draw_s, tracer_radius):
+                        route_draw_s, tracer_radius, dot_colors, still_at=None):
+    """Render the animation to output_path (mp4). With still_at (seconds), simulate
+    up to that moment and save just that frame as a PNG instead — a still at or past
+    duration_s is the finished hold frame."""
     if CANVAS_ROTATION_DEGREES != 0:
         sys.exit("ERROR: combo animation does not support canvas rotation.")
     check_ffmpeg()
@@ -194,12 +214,12 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
     glow_sigma = out_h / 40.0
     de_sigma = max(0.5, DENSITY_EXPAND_SIGMA * px_scale)
 
-    first_year = {k: next((r["year"] for r in all_routes if r["kind"] == k), "") for k in KINDS}
-    state = {k: {"first_year": first_year[k], "last_year": None, "count": 0, "meters": 0.0}
-             for k in KINDS}
+    first_year = all_routes[0]["year"]
+    state = {k: {"count": 0, "meters": 0.0} for k in KINDS}
+    current = {"year": first_year, "month": month_label(all_routes[0]["item"]["start_date"])}
     base = {k: np.zeros(shape, dtype=np.float32) for k in KINDS}
 
-    def build_frame(accum, lines, tips):
+    def build_frame(accum, lines, date, tips):
         layers = []
         for kind in KINDS:
             ramp, gamma, hb_thresh, hb_mult = LAYER_STYLE[kind]
@@ -216,12 +236,13 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
         out = _screen(_screen(map_arr, rgb), legend_arr)
         img = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), mode="RGB")
         img = draw_combo_text(img, *lines)
+        img = draw_combo_date(img, *date)
         frame = np.array(img)
-        if tips:
-            paint_dots_batch(frame, tips, tracer_radius, blur_sigma=0)
+        paint_colored_dots(frame, tips, tracer_radius, dot_colors)
         return frame
 
-    proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps)
+    target = None if still_at is None else int(still_at * fps)
+    proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps) if target is None else None
     active = []
     next_idx = 0
     t_start = time.time()
@@ -232,7 +253,8 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
                 next_idx += 1
                 s = state[r["kind"]]
                 s["count"] += 1
-                s["last_year"] = r["year"]
+                current["year"] = r["year"]
+                current["month"] = month_label(r["item"]["start_date"])
                 if not r["px"]:
                     s["meters"] += r["meters"]
                     continue
@@ -241,7 +263,7 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
                 r["seg"], r["t"] = 0, 0.0
                 active.append(r)
 
-            tips, still_active = [], []
+            tips, still_active = {k: [] for k in KINDS}, []
             for r in active:
                 new_seg, new_t, drawn = advance_cursor(r["px"], r["seg"], r["t"], r["speed"])
                 x0, y0 = r["bbox"][:2]
@@ -255,7 +277,7 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
                 state[r["kind"]]["meters"] += r["meters"] * drawn_px / r["length"]
                 r["seg"], r["t"] = new_seg, new_t
                 if drawn:
-                    tips.append(drawn[-1][1])
+                    tips[r["kind"]].append(drawn[-1][1])
                 if new_seg >= len(r["px"]) - 2 and new_t >= 1.0:
                     _add(base[r["kind"]], r, r.pop("buf"))
                     state[r["kind"]]["meters"] += r["meters"] * max(0.0, 1 - r["drawn"] / r["length"])
@@ -263,13 +285,20 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
                     still_active.append(r)
             active = still_active
 
-            accum = {k: base[k].copy() for k in KINDS}
-            for r in active:
-                _add(accum[r["kind"]], r, r["buf"])
-            lines = (live_lines(state["run"], "runs"), live_lines(state["bike"], "rides"))
-            proc.stdin.write(build_frame(accum, lines, tips).tobytes())
+            if target is None or target == f:
+                accum = {k: base[k].copy() for k in KINDS}
+                for r in active:
+                    _add(accum[r["kind"]], r, r["buf"])
+                lines = (live_lines(state["run"], "runs"), live_lines(state["bike"], "rides"))
+                date = (year_range_str(first_year, current["year"]), current["month"])
+                frame = build_frame(accum, lines, date, tips)
+                if target is not None:
+                    Image.fromarray(frame).save(output_path)
+                    print(f"Still at {still_at}s (frame {f}) → {output_path}")
+                    return
+                proc.stdin.write(frame.tobytes())
 
-            if (f + 1) % fps == 0:
+            if target is None and (f + 1) % fps == 0:
                 el = time.time() - t_start
                 print(f"  {f + 1}/{drawing_frames} frames, {len(active)} drawing, "
                       f"~{el / (f + 1) * (drawing_frames - f - 1):.0f}s left", flush=True)
@@ -278,12 +307,20 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
         for r in active:
             _add(base[r["kind"]], r, _draw_full(r, r["thickness"]))
 
-        # Hold: finished map with exact poster stats.
-        final_lines = (stats_lines(runs, "runs", False), stats_lines(rides, "rides", False))
-        hold = build_frame(base, final_lines, []).tobytes()
+        # Hold: finished map with exact poster stats (per-block year line dropped —
+        # the combined range is at the top).
+        final_lines = (stats_lines(runs, "runs", False)[1:], stats_lines(rides, "rides", False)[1:])
+        date = (year_range_str(first_year, all_routes[-1]["year"]), current["month"])
+        hold = build_frame(base, final_lines, date, {})
+        if target is not None:
+            Image.fromarray(hold).save(output_path)
+            print(f"Still (finished hold frame) → {output_path}")
+            return
+        hold = hold.tobytes()
         for _ in range(hold_frames):
             proc.stdin.write(hold)
     finally:
-        proc.stdin.close()
-        proc.wait()
+        if proc is not None:
+            proc.stdin.close()
+            proc.wait()
     print(f"Done in {time.time() - t_start:.0f}s → {output_path}")

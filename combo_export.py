@@ -27,16 +27,21 @@ from PIL import Image, ImageEnhance
 from src.processor import filter_sf_runs, decode_runs, load_bike_rides
 from src.renderer import StravaRenderer
 from src.tiles import fetch_map_tile
-from src.typography import stats_lines, _download_font
-from src.combo_layout import draw_combo_text, draw_combo_legends
+from src.typography import stats_lines, year_range_str, _download_font
+from src.combo_layout import draw_combo_text, draw_combo_legends, draw_combo_date
 from combo_config import (
     CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, OUTPUT_DIR, PRINT_DPI, BG_COLOR,
     MAP_TILE_OPACITY, MAP_TILE_CACHE, MAP_TILE_BRIGHTNESS, MAP_TILE_URL,
     MAP_FONT_PATH, MAP_FONT_URL,
-    SHOW_ELEVATION, BIKE_RIDES_PATH,
+    BIKE_RIDES_PATH,
     RUN_COLOR_RAMP, RUN_GAMMA, RUN_HOT_BLOOM_THRESHOLD, RUN_HOT_BLOOM_SIGMA_MULT,
     BIKE_COLOR_RAMP, BIKE_GAMMA, BIKE_HOT_BLOOM_THRESHOLD, BIKE_HOT_BLOOM_SIGMA_MULT,
 )
+
+
+def combined_year_range(items):
+    years = sorted(i["start_date"][:4] for i in items)
+    return year_range_str(years[0], years[-1])
 
 
 def composite_map_background(tile_img, canvas_size, opacity, bg_color):
@@ -121,9 +126,11 @@ def main():
     img = Image.fromarray(img_array, mode="RGB")
 
     _download_font(MAP_FONT_PATH, MAP_FONT_URL)
-    img = draw_combo_text(img, stats_lines(city_runs, "runs", SHOW_ELEVATION),
-                          stats_lines(rides, "rides", show_elevation=False))
+    run_lines = stats_lines(city_runs, "runs", show_elevation=False)
+    bike_lines = stats_lines(rides, "rides", show_elevation=False)
+    img = draw_combo_text(img, run_lines[1:], bike_lines[1:])   # [1:] drops per-block years
     img = draw_combo_legends(img, run_max, bike_max)
+    img = draw_combo_date(img, combined_year_range(city_runs + rides))
 
     if args.output:
         out_path = args.output
