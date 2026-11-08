@@ -47,11 +47,12 @@ COMBO_CENTER_GAP = 0.08
 COMBO_LEGEND_WIDTH_SCALE = 0.55
 
 # ── Animation (combo_animate.py) ─────────────────────────────────────────────
-# Sequential build: runs + rides merged in date order, paced by activity count
+# Sequential build (after a 0.5s blank intro): runs + rides merged in date order, paced by activity count
 # (each activity gets an equal slice of the timeline), each route drawn over
 # COMBO_ANIM_ROUTE_DRAW_S so dozens grow at once. Stats tally up live.
 COMBO_ANIM_RESOLUTION = (1080, 1350)  # 4:5, same aspect as the poster
 COMBO_ANIM_FPS = 30
+COMBO_ANIM_INTRO_S = 0.5              # blank map + zeroed stats before drawing starts
 COMBO_ANIM_DURATION_S = 30            # drawing time
 COMBO_ANIM_HOLD_S = 2                 # hold on the finished map
 COMBO_ANIM_ROUTE_DRAW_S = 0.6         # time for one route to draw start → end

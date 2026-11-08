@@ -160,10 +160,11 @@ def _assign_thickness(routes, shape, px_scale):
 
 def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, hold_s,
                         route_draw_s, tracer_radius, dot_colors, still_at=None,
-                        dot_glow=(0.0, 0.0)):
+                        dot_glow=(0.0, 0.0), intro_s=0.0):
     """Render the animation to output_path (mp4). With still_at (seconds), simulate
     up to that moment and save just that frame as a PNG instead — a still at or past
-    duration_s is the finished hold frame."""
+    duration_s is the finished hold frame. intro_s holds the blank map (zeroed
+    stats) before drawing starts; still_at times include it."""
     if CANVAS_ROTATION_DEGREES != 0:
         sys.exit("ERROR: combo animation does not support canvas rotation.")
     check_ffmpeg()
@@ -183,7 +184,7 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
     routes = [r for r in all_routes if r["px"]]
     print(f"Animating {sum(r['kind'] == 'run' for r in routes)} runs + "
           f"{sum(r['kind'] == 'bike' for r in routes)} rides: "
-          f"{drawing_frames} frames ({duration_s}s @ {fps}fps) + {hold_frames} hold")
+          f"{intro_s}s intro + {drawing_frames} frames ({duration_s}s @ {fps}fps) + {hold_frames} hold")
 
     shape = (out_h, out_w)
     _assign_thickness(routes, shape, px_scale)
@@ -246,12 +247,27 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
         paint_colored_dots(frame, tips, tracer_radius, dot_colors, *dot_glow)
         return frame
 
-    target = None if still_at is None else int(still_at * fps)
+    intro_frames = int(round(intro_s * fps))
+    target = None if still_at is None else int(still_at * fps) - intro_frames
+
+    # Intro: blank map, zeroed stats, first year/month up top.
+    intro = build_frame(base, (live_lines(state["run"], "runs"), live_lines(state["bike"], "rides")),
+                        (first_year, current["month"]), {})
+    if target is not None and target < 0:
+        Image.fromarray(intro).save(output_path)
+        print(f"Still at {still_at}s (intro) → {output_path}")
+        return
+
     proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps) if target is None else None
     active = []
     next_idx = 0
     t_start = time.time()
     try:
+        if proc is not None:
+            intro_bytes = intro.tobytes()
+            for _ in range(intro_frames):
+                proc.stdin.write(intro_bytes)
+
         for f in range(drawing_frames):
             while next_idx < len(all_routes) and all_routes[next_idx]["start"] <= f:
                 r = all_routes[next_idx]
