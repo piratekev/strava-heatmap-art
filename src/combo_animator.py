@@ -70,8 +70,9 @@ def month_label(start_date):
     return datetime.strptime(start_date[:7], "%Y-%m").strftime("%b %Y")
 
 
-def paint_colored_dots(frame, tips_by_kind, radius, colors):
-    """Screen-blend a hard-edged dot at each tip, colored per layer (runs vs rides)."""
+def paint_colored_dots(frame, tips_by_kind, radius, colors, glow_sigma=0.0, glow_strength=0.0):
+    """Screen-blend a dot at each tip, colored per layer (runs vs rides), plus an
+    optional soft same-color glow so dots stand out against their own lines."""
     h, w = frame.shape[:2]
     out = frame.astype(np.float32)
     for kind, tips in tips_by_kind.items():
@@ -80,6 +81,9 @@ def paint_colored_dots(frame, tips_by_kind, radius, colors):
         mask = np.zeros((h, w), dtype=np.float32)
         for x, y in tips:
             cv2.circle(mask, (int(round(x)), int(round(y))), radius, 1.0, -1, lineType=cv2.LINE_AA)
+        if glow_sigma > 0 and glow_strength > 0:
+            halo = cv2.GaussianBlur(mask, (0, 0), sigmaX=glow_sigma) * glow_strength
+            mask = np.clip(np.maximum(mask, halo), 0, 1)
         out = _screen(out, mask[:, :, None] * np.array(colors[kind], dtype=np.float32))
     frame[:] = np.clip(out, 0, 255).astype(np.uint8)
 
@@ -155,7 +159,8 @@ def _assign_thickness(routes, shape, px_scale):
 # ── Main loop ────────────────────────────────────────────────────────────────
 
 def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, hold_s,
-                        route_draw_s, tracer_radius, dot_colors, still_at=None):
+                        route_draw_s, tracer_radius, dot_colors, still_at=None,
+                        dot_glow=(0.0, 0.0)):
     """Render the animation to output_path (mp4). With still_at (seconds), simulate
     up to that moment and save just that frame as a PNG instead — a still at or past
     duration_s is the finished hold frame."""
@@ -238,7 +243,7 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
         img = draw_combo_text(img, *lines)
         img = draw_combo_date(img, *date)
         frame = np.array(img)
-        paint_colored_dots(frame, tips, tracer_radius, dot_colors)
+        paint_colored_dots(frame, tips, tracer_radius, dot_colors, *dot_glow)
         return frame
 
     target = None if still_at is None else int(still_at * fps)
@@ -294,7 +299,8 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
                 frame = build_frame(accum, lines, date, tips)
                 if target is not None:
                     Image.fromarray(frame).save(output_path)
-                    print(f"Still at {still_at}s (frame {f}) → {output_path}")
+                    print(f"Still at {still_at}s (frame {f}, drawing {len(tips['run'])} runs + "
+                          f"{len(tips['bike'])} rides) → {output_path}")
                     return
                 proc.stdin.write(frame.tobytes())
 

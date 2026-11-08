@@ -37,6 +37,8 @@ SHOW_ELEVATION = False
 # Size of the top-center year range / animation month line, relative to stat text.
 COMBO_DATE_SCALE = 1.2
 COMBO_MONTH_SCALE = 0.7
+# Top edge of the year range, as a fraction of canvas height.
+COMBO_DATE_TOP = 0.075
 
 # Gutter between the two blocks, as a fraction of canvas width.
 COMBO_CENTER_GAP = 0.08
@@ -55,4 +57,8 @@ COMBO_ANIM_HOLD_S = 2                 # hold on the finished map
 COMBO_ANIM_ROUTE_DRAW_S = 0.6         # time for one route to draw start → end
 COMBO_ANIM_TRACER_RADIUS = 2          # px, dot at each growing route's tip
 # Tracer dot colors per layer — bright versions of each ramp so runs/rides read apart.
-COMBO_ANIM_DOT_COLORS = {"run": [90, 235, 255], "bike": [255, 70, 215]}
+COMBO_ANIM_DOT_COLORS = {"run": [120, 240, 255], "bike": [255, 70, 215]}
+# Soft glow around each dot (Gaussian sigma in px, strength) so a dot still pops
+# when it sits on a line of its own color. 0 strength = hard dots only.
+COMBO_ANIM_DOT_GLOW_SIGMA = 2.5
+COMBO_ANIM_DOT_GLOW_STRENGTH = 1.5

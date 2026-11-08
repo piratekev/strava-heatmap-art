@@ -14,7 +14,7 @@ from PIL import ImageDraw
 from config import (
     MAP_FONT_PATH, TYPOGRAPHY_SCALE, TYPOGRAPHY_WIDTH_SCALE,
     COMBO_CENTER_GAP, COMBO_LEGEND_WIDTH_SCALE,
-    COMBO_DATE_SCALE, COMBO_MONTH_SCALE,
+    COMBO_DATE_SCALE, COMBO_MONTH_SCALE, COMBO_DATE_TOP,
     RUN_COLOR_RAMP, RUN_GAMMA, BIKE_COLOR_RAMP, BIKE_GAMMA,
 )
 from src.typography import render_typography, render_corner_legend, _load_font
@@ -49,15 +49,22 @@ def _legend_height(m):
     return m["bar_height"] + m["label_gap"] + int(m["legend_font"] * 1.2)
 
 
+def _bar_width(width):
+    # same formula as typography.render_corner_legend
+    return int(width * 3 // 8 * COMBO_LEGEND_WIDTH_SCALE)
+
+
 def draw_combo_text(img, run_lines, bike_lines):
-    """Draw both stat blocks (lists of strings, top-to-bottom), lifted to leave
-    room for the legends underneath."""
+    """Draw both stat blocks (lists of strings, top-to-bottom), each centered over
+    its legend bar and lifted to leave room for the legends underneath."""
     m = _metrics(img.height)
     lift = _legend_height(m) + m["line_gap"] * 3
+    half_bar = _bar_width(img.width) // 2
     for (side, anchor_x, unit), lines in zip(_blocks(img.width), [run_lines, bike_lines]):
+        center_x = anchor_x - half_bar if side == "right" else anchor_x + half_bar
         img = render_typography(img, None, font_path=MAP_FONT_PATH,
                                 scale=TYPOGRAPHY_SCALE, width_scale=TYPOGRAPHY_WIDTH_SCALE,
-                                align=side, unit=unit, anchor_x=anchor_x,
+                                align="center", unit=unit, anchor_x=center_x,
                                 fixed_line_height=True, lines=lines, bottom_offset=lift)
     return img
 
@@ -83,7 +90,7 @@ def draw_combo_date(img, year_range, month=None):
     m = _metrics(img.height)
     draw = ImageDraw.Draw(img)
     shadow_offset = max(2, img.height // 1800)
-    y = m["margin"]
+    y = int(img.height * COMBO_DATE_TOP)
     rows = [(year_range, int(m["main_font"] * COMBO_DATE_SCALE), (255, 255, 255))]
     if month:
         rows.append((month, int(m["main_font"] * COMBO_MONTH_SCALE), (200, 200, 200)))

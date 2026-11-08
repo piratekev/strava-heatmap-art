@@ -43,7 +43,8 @@ def render_typography(img, sf_runs, font_path,
     """
     Render year range, run count, distance, and elevation onto img (PIL Image).
     All four lines use the same font size, aligned to the bottom-right corner
-    (align="right", default) or bottom-left corner (align="left").
+    (align="right", default), bottom-left corner (align="left"), or centered on
+    anchor_x (align="center").
     `unit` is the count label ("runs", "rides").
     `anchor_x`, when set, replaces the canvas edge as the alignment line: lines end
     at anchor_x (align="right") or start at it (align="left").
@@ -77,8 +78,12 @@ def render_typography(img, sf_runs, font_path,
         if fixed_line_height:
             ref = draw.textbbox((0, 0), "0123456789", font=f)
             text_h = ref[3] - ref[1]
-        edge = anchor_x if anchor_x is not None else (margin if align == "left" else w - margin)
-        x = (edge if align == "left" else edge - text_w) + x_offset
+        if align == "center":
+            edge = anchor_x if anchor_x is not None else w // 2
+            x = edge - text_w // 2 + x_offset
+        else:
+            edge = anchor_x if anchor_x is not None else (margin if align == "left" else w - margin)
+            x = (edge if align == "left" else edge - text_w) + x_offset
         y -= text_h
         draw.text((x + shadow_offset, y + shadow_offset), text, font=f, fill=shadow)
         draw.text((x, y), text, font=f, fill=text_color)

@@ -56,6 +56,8 @@ def main():
         route_draw_s=C.COMBO_ANIM_ROUTE_DRAW_S,
         tracer_radius=max(1, C.COMBO_ANIM_TRACER_RADIUS // (2 if args.preview else 1)),
         dot_colors=C.COMBO_ANIM_DOT_COLORS, still_at=args.still,
+        dot_glow=(C.COMBO_ANIM_DOT_GLOW_SIGMA / (2 if args.preview else 1),
+                  C.COMBO_ANIM_DOT_GLOW_STRENGTH),
     )
 
 
