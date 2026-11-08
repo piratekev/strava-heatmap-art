@@ -313,10 +313,10 @@ def run_combo_animation(runs, rides, output_path, resolution, fps, duration_s, h
         for r in active:
             _add(base[r["kind"]], r, _draw_full(r, r["thickness"]))
 
-        # Hold: finished map with exact poster stats (per-block year line dropped —
-        # the combined range is at the top).
+        # Hold: finished map with exact poster stats and just the year range up top
+        # (no month line).
         final_lines = (stats_lines(runs, "runs", False)[1:], stats_lines(rides, "rides", False)[1:])
-        date = (year_range_str(first_year, all_routes[-1]["year"]), current["month"])
+        date = (year_range_str(first_year, all_routes[-1]["year"]), None)  # years only
         hold = build_frame(base, final_lines, date, {})
         if target is not None:
             Image.fromarray(hold).save(output_path)
