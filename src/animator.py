@@ -188,6 +188,29 @@ def paint_dot(frame, cx, cy, radius, blur_sigma, brightness=1.0, alpha=1.0):
         frame[:, :, c] = np.clip(blended, 0, 255).astype(np.uint8)
 
 
+def paint_dots_batch(frame, positions, radius, blur_sigma, brightness=1.0):
+    """Paint multiple cursor dots in a single blur pass (screen blend).
+
+    positions: list of (cx, cy) float tuples.
+    All dots are drawn onto one layer, blurred once, then screen-blended onto frame.
+    Modifies frame in-place.
+    """
+    if not positions:
+        return
+    h, w = frame.shape[:2]
+    dot_layer = np.zeros((h, w), dtype=np.float32)
+    for cx, cy in positions:
+        cv2.circle(dot_layer, (int(cx), int(cy)), int(radius), color=255.0, thickness=-1)
+    if blur_sigma > 0:
+        dot_layer = gaussian_filter(dot_layer, sigma=blur_sigma)
+    if brightness != 1.0:
+        dot_layer = np.clip(dot_layer * brightness, 0.0, 255.0)
+    for c in range(3):
+        ch = frame[:, :, c].astype(np.float32)
+        blended = 255 - (255 - ch) * (255 - dot_layer) / 255
+        frame[:, :, c] = np.clip(blended, 0, 255).astype(np.uint8)
+
+
 # ── Typography ────────────────────────────────────────────────────────────────
 
 def render_animation_typography(img, month_year, run_count, total_miles_floor,
@@ -320,6 +343,11 @@ def _format_month_year(start_date):
         return dt.strftime("%b %Y")
     except ValueError:
         return start_date[:7]
+
+
+def _format_year(start_date):
+    """Extract 4-digit year from ISO date string."""
+    return start_date[:4]
 
 
 def run_animation(runs, output_path, config):
@@ -634,16 +662,12 @@ def run_parallel_animation(runs, output_path, config):
     speed = max_length / drawing_frames  # px/frame — identical for all runs
 
     # ── Stats for typography ──────────────────────────────────────────────────
-    total_miles = 0.0
-    for r in valid_runs:
-        coords = r["run"]["coords"]
-        for i in range(len(coords) - 1):
-            total_miles += haversine_miles(
-                coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]
-            )
-    first_date = _format_month_year(valid_runs[0]["run"]["start_date"])
-    last_date = _format_month_year(valid_runs[-1]["run"]["start_date"])
-    date_range_str = f"{first_date} – {last_date}"
+    total_miles = sum(
+        r["run"].get("distance", 0.0) / _METERS_PER_MILE for r in valid_runs
+    )
+    first_year = _format_year(valid_runs[0]["run"]["start_date"])
+    last_year = _format_year(valid_runs[-1]["run"]["start_date"])
+    date_range_str = f"{first_year} – {last_year}"
 
     print(
         f"Parallel animation: {len(valid_runs)} runs, {drawing_frames} frames "
@@ -696,14 +720,20 @@ def run_parallel_animation(runs, output_path, config):
 
     # ── Cursor states ─────────────────────────────────────────────────────────
     cursor_states = [{"seg": 0, "t": 0.0, "done": False} for _ in valid_runs]
+    tracer_radius = max(1, config.ANIMATION_DOT_RADIUS // 2)
+    tracer_blur = 0  # hard-edged dot, no halo
 
     # ── Animation pass ────────────────────────────────────────────────────────
     print(f"Rendering {len(valid_runs)} runs in parallel → {output_path}")
     proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps)
 
     try:
+        # Blank opening frame — just the map, no routes drawn yet
+        proc.stdin.write(_build_frame().tobytes())
+
         for _ in range(drawing_frames):
             buf = np.zeros((out_h, out_w), dtype=np.float32)
+            tips = []
 
             for i, state in enumerate(cursor_states):
                 if state["done"]:
@@ -717,13 +747,17 @@ def run_parallel_animation(runs, output_path, config):
                         buf, (int(x0), int(y0)), (int(x1), int(y1)),
                         color=1.0, thickness=line_thickness, lineType=cv2.LINE_AA,
                     )
+                if drawn:
+                    tips.append(drawn[-1][1])
                 state["seg"] = new_seg
                 state["t"] = new_t
                 if new_seg >= len(px_coords) - 2 and new_t >= 1.0:
                     state["done"] = True
 
             accumulation += buf
-            proc.stdin.write(_build_frame().tobytes())
+            frame_rgb = _build_frame()
+            paint_dots_batch(frame_rgb, tips, tracer_radius, tracer_blur)
+            proc.stdin.write(frame_rgb.tobytes())
 
         # ── Hold frames: text fades in ────────────────────────────────────────
         if hold_frames > 0:
