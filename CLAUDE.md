@@ -1,5 +1,9 @@
 # Strava Art — Developer Reference
 
+> **Branch `feat/run-bike-combo` is standalone and never merges into `main`.** It adds
+> the runs + Baywheels combo poster and animation (see "Combo branch" below). Keep
+> combo work here; don't open PRs from it to `main`.
+
 This file is for Claude and developers who need to understand the codebase quickly.
 
 ## What it does
@@ -125,6 +129,51 @@ Solve for `W/H` and pick pixel dimensions accordingly. See `test_nyc_intermediat
 **Garmin source** (`src/garmin.py`): `FETCH_SOURCE = "garmin"` (or `garmin_fetch.py`) pulls runs since the latest cached activity via the `garminconnect` library, converts each to the subset of the Strava schema the pipeline reads (`sport_type`, `map.summary_polyline`, `distance`, `start_date`, …), tagged `source: "garmin"`. Dedupe is by Garmin ID (Strava's `external_id` is `garmin_ping_<id>`) or start time within 60 s. A later Strava fetch replaces Garmin entries with matching `external_id`. Login tokens live in `~/.garminconnect`; first login needs `GARMIN_EMAIL`/`GARMIN_PASSWORD` (prompt or `.env`) and MFA — without a TTY, run `garmin_fetch.py` once, then `garmin_fetch.py --mfa <code>`.
 
 **Token refresh** (`src/fetcher.py:_update_env_tokens`): when the access token expires mid-fetch, `StravaClient.refresh_access_token()` POSTs to Strava and writes the new tokens back to `.env` in-place. It only updates existing lines — auth.py must have written them first.
+
+## Combo branch (runs + Baywheels rides)
+
+**Entry points:** `combo_export.py` (poster) and `combo_animate.py` (animation). Both set
+`sys.modules["config"] = combo_config` before importing `src/*`, the same trick
+`export.py --config` uses. `combo_config.py` inherits from `config.py` (same SF bounds,
+canvas, tiles) and adds per-layer `RUN_*` / `BIKE_*` palette, gamma, and hot-bloom values.
+
+**Bike data** is loaded by `src/processor.py:load_bike_rides()` directly from
+`../baywheels-art/data/repaired_rides.json`: a dict keyed by ride_id, with decoded
+`coordinates` `[[lat, lng], ...]` and `start_time_ms`. It filters by centroid within
+`CITY_BOUNDS` and returns the same shape as `decode_runs()`. Distance is haversine over the
+track, and elevation is 0.
+
+**Two layers:** each dataset is rasterized into its own density canvas and colored on its own
+(`renderer.to_image()` takes `color_ramp` / `hot_bloom_threshold` / `hot_bloom_sigma_mult`
+overrides). The layers are then screen-blended together and onto the map. Grain is applied
+once to the combined layer.
+
+**Layout** lives in `src/combo_layout.py`, shared by the poster and the animation:
+- one combined year range at top-center (`draw_combo_date`; the animation adds a month line)
+- two stat blocks (count / miles) centered over their legend bars at bottom-center (`draw_combo_text`)
+- legend bars at the very bottom (`draw_combo_legends`)
+
+This needed some extra knobs in `src/typography.py`:
+- `render_typography`: `align="center"`, `anchor_x`, `fixed_line_height` (keeps both blocks' rows aligned when one has a comma descender), `lines=` (live values), `bottom_offset`
+- `render_corner_legend`: `bar_top`
+- `stats_lines()`
+
+**Animation** (`src/combo_animator.py`):
+- **Order and pacing:** runs and rides are merged by `start_date` and paced by activity count. `schedule_start_frames()` spaces start frames evenly so the last route finishes at the end of the build. Every route draws over `COMBO_ANIM_ROUTE_DRAW_S`, so per-route speed = path length / draw frames.
+- **Per-route buffers:** each route draws into a small local buffer sized to its padded bbox, not the full frame. `cv2.line` overwrites rather than adds, so a route's own per-frame overlaps saturate at 1 instead of stacking. When a route finishes, its buffer is added into the layer's base canvas.
+- **Normalization:** a pre-pass draws every route at its final thickness to get each layer's `final_log_max`. Frames normalize against it, so early frames are dim and the last frame matches the finished look.
+- **Thickness:** mirrors the poster's two-pass rule. Routes through the top 50% / 10% densest corridors draw thicker, scaled to video resolution.
+- **Stats:** they tally live. Miles accumulate as each route's Strava `distance` × the fraction drawn. Routes with no drawable track still count, so the final numbers match the poster exactly.
+- **Frame sequence:** blank intro (`COMBO_ANIM_INTRO_S`) → build → hold (years only, no month).
+- **`--still SECONDS`** simulates the timeline but builds only one frame and saves it as a PNG. It prints how many runs / rides are drawing at that moment. Activity is uneven: e.g. Sep–Oct 2024 has 2 runs vs 188 rides, so some stretches show only pink dots.
+
+**`src/animator.py`** was copied from the `amsterdam-oneoff` branch, not merged, for its
+helpers (`advance_cursor`, `canvas_to_rgb`, ffmpeg pipe). Its own
+`run_animation` / `run_parallel_animation` expect `ANIMATION_*` config knobs that don't
+exist on this branch, so only the helpers are used here.
+
+**Tests:** `tests/test_combo.py` (bike loader, ramp override, typography) and
+`tests/test_combo_animator.py` (scheduling, live lines, month labels).
 
 ## Environment
 

@@ -1,5 +1,10 @@
 # Strava Heatmap Art
 
+> **Branch `feat/run-bike-combo`** — standalone work that is not meant to merge into
+> `main`. It adds a combined runs + Baywheels bike-share map (poster + Instagram-story
+> animation). See [Run + bike combo](#run--bike-combo-this-branch) below; everything
+> else in this README is the same as `main`.
+
 Generate a print-quality running heatmap poster from your Strava data.
 
 ![San Francisco running heatmap](sf.png)
@@ -74,6 +79,64 @@ python export.py --config nyc
 ```
 
 Output is saved to `output/poster-<timestamp>.png`.
+
+## Run + bike combo (this branch)
+
+One San Francisco map with two datasets: runs from this repo (cyan) and Lyft Baywheels
+bike-share rides (Lyft pink) from the sibling
+`baywheels-art` project (checked out next to this repo). Same map, same effects; each dataset
+gets its own palette and the two layers are screen-blended together.
+
+![Runs + Baywheels rides, San Francisco](combo.png)
+
+**Data:** runs come from `data/activities.json` (fetch them as usual). Rides are read
+straight from `../baywheels-art/data/repaired_rides.json` — nothing is copied. Point
+somewhere else with `--bikes <path>` or `BIKE_RIDES_PATH` in `combo_config.py`.
+
+### Poster
+
+```bash
+python combo_export.py               # full 4720×5900 print render (~6 min)
+python combo_export.py --preview     # 1/10 scale
+```
+
+Saves `output/poster-combo-<timestamp>.png`.
+
+### Animation (Instagram story)
+
+```bash
+python combo_animate.py              # 1080×1350 @ 30fps, 32.5s (~9 min)
+python combo_animate.py --preview    # half resolution
+python combo_animate.py --still 15   # one frame as a PNG (~1 min) — check before a full run
+python combo_animate.py --still 33   # the finished frame
+```
+
+Saves `output/animation-combo-<timestamp>.mp4` (or `.png` with `--still`). Timeline:
+
+| Time | What's on screen |
+|---|---|
+| 0 – 0.5s | Empty map, `0 runs / 0 mi`, `0 rides / 0 mi` |
+| 0.5 – 30.5s | Runs and rides draw in date order, paced by activity count (each gets an equal slice of time), each route growing over 0.6s behind a colored dot. Counts and miles tally up; the year range and current month tick along at the top |
+| 30.5 – 32.5s | Finished map, final totals, year range only |
+
+Long renders: keep the Mac awake (`caffeinate -i python combo_animate.py`) — a
+sleeping machine turned an 8-minute render into 2 hours.
+
+To get it onto your phone, AirDrop the `.mp4` to your iPhone (it lands in Photos) or
+import it into Photos on the Mac with iCloud Photos on.
+
+### Tuning (`combo_config.py`)
+
+| Knob | Controls |
+|---|---|
+| `RUN_COLOR_RAMP` / `BIKE_COLOR_RAMP` | Palettes (cyan / Lyft pink) |
+| `RUN_GAMMA`, `BIKE_GAMMA`, `*_HOT_BLOOM_*` | Per-layer brightness and glow — the bike layer is toned down from `baywheels-art` so runs aren't buried |
+| `COMBO_CENTER_GAP`, `COMBO_LEGEND_WIDTH_SCALE` | Spacing and width of the two bottom-center stat blocks / legend bars |
+| `COMBO_DATE_TOP`, `COMBO_DATE_SCALE`, `COMBO_MONTH_SCALE` | Position and size of the year range / month at the top |
+| `COMBO_ANIM_DURATION_S`, `COMBO_ANIM_INTRO_S`, `COMBO_ANIM_HOLD_S` | Build length, blank intro, end hold |
+| `COMBO_ANIM_ROUTE_DRAW_S` | How long each route takes to draw (longer = slower, more overlap) |
+| `COMBO_ANIM_TRACER_RADIUS`, `COMBO_ANIM_DOT_COLORS`, `COMBO_ANIM_DOT_GLOW_*` | Tracer dots |
+| `COMBO_ANIM_RESOLUTION`, `COMBO_ANIM_FPS` | Output size (4:5, matches the poster) and frame rate |
 
 ## Adapting for a new city
 
