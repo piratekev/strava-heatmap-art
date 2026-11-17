@@ -10,7 +10,7 @@ CITY_BOUNDS = {
 CANVAS_WIDTH_PX  = 4720   # was 4680 — +40px west
 CANVAS_HEIGHT_PX = 5900   # was 5850 — +50px south (maintains 4:5 ratio)
 PRINT_DPI = 285
-CANVAS_ROTATION_DEGREES = 0  # degrees clockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
+CANVAS_ROTATION_DEGREES = 0  # degrees counterclockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
 
 # Optional: decouple intermediate canvas scale from final output dimensions.
 # When set, the intermediate canvas is computed from these dimensions instead of
@@ -54,10 +54,10 @@ SHOW_ELEVATION = True
 # Density color ramp: (normalized_value, [R, G, B])
 # Edit stops here to change the palette — no code changes needed
 ROUTE_COLOR_RAMP = [
-    (0.0,  [100, 100, 255]),   # rarely-run → brighter indigo (more luminous, same hue)
-    (0.45, [200,   0, 255]),   # moderate   → electric violet
-    (0.8,  [255,   0, 180]),   # heavy      → neon hot pink
-    (1.0,  [255, 220, 255]),   # peak       → blown-out pink-white (kept at 220 so g > 200 test passes)
+    (0.0,  [10,  60,  20]),    # rarely-run → dim green
+    (0.5,  [30,  160, 50]),    # moderate   → medium green
+    (0.85, [80,  220, 90]),    # heavy      → brighter green
+    (1.0,  [255, 255, 255]),  # peak       → white-hot
 ]
 
 # ── Line drawing ─────────────────────────────────────────────────────────────
@@ -81,8 +81,8 @@ ROUTE_LINE_THICKNESS_10_BONUS = 10
 # Applied as:  norm = norm ** GAMMA  (before colour mapping)
 # Values below 1.0 lift low-density pixels (makes single-run lines more visible).
 # Values above 1.0 suppress them (good if you want only hot routes to pop).
-#   1.0 = linear (no lift)   0.7 = old default   0.5 = current (single-run lines clearly visible)
-GAMMA = 0.4
+#   1.0 = linear (no lift)   0.7 = old default   0.4 = aggressive lift (old)   0.6 = current (keeps single-run routes dim)
+GAMMA = 0.6
 
 # ── Density expand ───────────────────────────────────────────────────────────
 # Thickens corridors proportional to how many times they were run.
@@ -106,16 +106,18 @@ DENSITY_EXPAND_POWER = 2.0
 # Regular bloom is disabled in render.py; this is the only glow that fires.
 
 # Normalised density above which hot bloom activates (0–1 scale after gamma).
-# With low GAMMA values (e.g. 0.4) the gamma lift pushes medium-density pixels
-# above 0.5, so raise this threshold to keep hot bloom focused on true peaks only.
+# With low GAMMA values the gamma lift pushes medium-density pixels up, so raise
+# this threshold to keep hot bloom focused on true peaks only.
 #   0.5 = broad (fires on many routes when GAMMA < 0.7)
-#   0.75 = focused — with GAMMA=0.4, fires only where raw norm > ~0.49 (top half of density)
-HOT_BLOOM_THRESHOLD = 0.75
+#   0.75 = focused (old default, paired with GAMMA=0.4)
+#   0.92 = current — with GAMMA=0.6, concentrates the white-hot glow on the single
+#          hottest corridor instead of spreading across every well-run street.
+HOT_BLOOM_THRESHOLD = 0.92
 
 # Width of the hot-bloom gaussian (multiplied by bloom_sigma_wide in renderer).
 # Increase when line thickness is low — thinner source lines need wider spread
 # to produce the same visible halo.   Good range: 3–6.
-HOT_BLOOM_SIGMA_MULT = 5.0
+HOT_BLOOM_SIGMA_MULT = 3.5
 
 # Screen-blend strength of the hot-bloom layer.
 # Higher = brighter / more blown-out white cores.   Good range: 1.0–5.0.
@@ -123,6 +125,10 @@ HOT_BLOOM_STRENGTH = 4.0
 
 # Background color
 BG_COLOR = [0, 0, 0]  # pure black
+
+# Activity source used by --fetch: "strava" (API, needs auth.py) or "garmin"
+# (Garmin Connect, login saved to ~/.garminconnect — see garmin_fetch.py).
+FETCH_SOURCE = "strava"
 
 # Strava API
 STRAVA_BASE_URL = "https://www.strava.com/api/v3"
@@ -145,10 +151,12 @@ MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 #   11 = fast preview, city-level blobs
 #   13 = neighbourhood streets visible
 #   15 = neighbourhood detail — clear streets, ~150 tiles for SF
-#   16 = current default — sharper detail (~600 tiles, 2–3 min first download)
+#   16 = sharper detail (~600 tiles, 2–3 min first download)
 #   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
 # Set high (16–17) only when producing the final print file.
 MAP_TILE_ZOOM = 17
+MAP_PREVIEW_TILE_ZOOM = 11
+MAP_ATTRIBUTION = "© OpenStreetMap contributors, © CARTO"
 
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 # Brightness multiplier applied to the map tile before compositing.

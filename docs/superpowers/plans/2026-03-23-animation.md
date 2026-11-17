@@ -1,5 +1,14 @@
 # Animation Feature Implementation Plan
 
+> **Historical plan, not an execution checklist.** The feature has been
+> implemented and subsequently changed. For current CLI/defaults and known
+> gaps, use [README](../../../README.md#animation-animatepy) and
+> [animation status](../../animation-status.md). In particular, parallel mode
+> and post-processing were added, poster commands now use `render.py` with
+> an `export.py` compatibility alias, and exact poster parity remains unverified.
+> Do not rerun the implementation steps or treat the original estimates and
+> unchecked boxes below as the current branch status.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `animate.py` that generates a 60fps MP4 timelapse of all Strava runs being drawn stroke-by-stroke with a glowing cursor, accumulating density over time, ending with a frame that matches the static poster.

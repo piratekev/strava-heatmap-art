@@ -1,6 +1,14 @@
 # Animation Feature Design
 **Date:** 2026-03-23
-**Status:** Approved
+**Status:** Historical approved design, superseded as a runtime reference.
+
+> Current behavior and merge-readiness: [animation status](../../animation-status.md)
+> and [README](../../../README.md#animation-animatepy). Subsequent work added
+> parallel mode, speed envelopes, cursor fading, and per-frame density/bloom
+> effects, and renamed the poster CLI to `render.py` (with `export.py` retained
+> as an alias). Exact poster parity below is a design target, not a verified
+> guarantee. NYC rotation remains unsupported. This record preserves the
+> original proposal; its examples/defaults are not the current CLI contract.
 
 ## Overview
 

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 from unittest.mock import patch
-from PIL import Image, ImageFont
-from src.typography import render_typography, render_legend, _download_font
+from PIL import Image, ImageDraw, ImageFont
+from src.typography import render_typography, render_legend, render_attribution, _download_font
 
 _RAMP = [
     (0.0,  [150, 100, 255]),
@@ -309,19 +309,21 @@ def test_render_legend_bar_width_proportional_at_small_canvas(tmp_path):
     def bar_proportion(canvas_w):
         img = Image.new("RGB", (canvas_w, 500), color=(0, 0, 0))
         before = np.array(img).copy()
-        with patch("src.typography._load_font", return_value=ImageFont.load_default()):
+        with patch("src.typography._load_font", return_value=ImageFont.load_default()), \
+             patch("PIL.ImageDraw.ImageDraw.text"):
             render_legend(img, color_ramp=_RAMP, font_path=font_path)
         after = np.array(img)
         diff = np.abs(after.astype(int) - before.astype(int)).sum(axis=2)
         h, w = diff.shape
-        center_row = diff[h // 2, :]
+        center_row = diff[np.argmax(diff.sum(axis=1)), :]
         changed = np.where(center_row > 0)[0]
-        if len(changed) == 0:
-            return 0.0
+        assert len(changed) > 0, "The test must sample the visible gradient"
         return (changed[-1] - changed[0] + 1) / canvas_w
 
     prop_large = bar_proportion(1740)
     prop_small = bar_proportion(174)
+    assert prop_large == pytest.approx(0.375, abs=0.01)
+    assert prop_small == pytest.approx(0.375, abs=0.01)
     # Both should be close to 37.5%; definitely not 2x different
     assert abs(prop_large - prop_small) < 0.15, (
         f"large={prop_large:.2f}, small={prop_small:.2f}; bar must scale proportionally"
@@ -430,3 +432,28 @@ def test_render_legend_bar_width_not_shrunk_by_typography_scale(tmp_path):
         f"scale=1.0 → {prop_full:.2f}, scale=0.7 → {prop_nyc:.2f}; "
         f"bar_width must not shrink with TYPOGRAPHY_SCALE"
     )
+
+
+def test_render_typography_accepts_empty_activity_list(tmp_path):
+    img = Image.new("RGB", (540, 540))
+    with patch("PIL.ImageDraw.ImageDraw.text") as text:
+        assert render_typography(img, [], str(tmp_path / "missing.ttf")) is img
+    labels = [call.args[1] for call in text.call_args_list]
+    assert "No activities" in labels
+    assert "0 runs" in labels
+
+
+@pytest.mark.parametrize("width,height", [(472, 590), (174, 500), (1740, 5000)])
+def test_attribution_is_visible_and_fits_final_canvas(tmp_path, width, height):
+    from config import MAP_ATTRIBUTION
+    img = Image.new("RGB", (width, height))
+    assert render_attribution(img, MAP_ATTRIBUTION, str(tmp_path / "missing.ttf")) is img
+    assert np.count_nonzero(np.asarray(img)) > 0
+    with patch("PIL.ImageDraw.ImageDraw.text") as text:
+        render_attribution(img, MAP_ATTRIBUTION, str(tmp_path / "missing.ttf"))
+    args, kwargs = text.call_args
+    assert args[1] == MAP_ATTRIBUTION
+    draw = ImageDraw.Draw(img)
+    left, top, right, bottom = draw.textbbox(args[0], args[1], font=kwargs["font"], anchor=kwargs["anchor"])
+    assert 0 <= left < right <= width
+    assert 0 <= top < bottom <= height

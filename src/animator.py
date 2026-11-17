@@ -118,8 +118,8 @@ def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color,
                   hot_bloom_sigma=0.0, hot_bloom_threshold=0.75, hot_bloom_strength=4.0):
     """Convert float32 accumulation canvas to uint8 RGB.
 
-    Uses fixed final_log_max so early frames are dim and the final frame
-    matches the static poster color output.
+    Uses a fixed final_log_max anchor across frames. Different rasterization
+    means the completed frame need not match the static poster color output.
 
     Optional post-processing effects (ported from renderer.to_image):
       density_expand_sigma > 0  — thicken heavy corridors via Gaussian expand
@@ -594,7 +594,7 @@ def run_parallel_animation(runs, output_path, config):
 
     Each run's speed is normalized so the longest run finishes at
     ANIMATION_PARALLEL_DURATION_S. Shorter runs finish proportionally earlier.
-    No cursor dot. Stats text fades in during the hold frames.
+    Small tracer dots mark active routes. Stats fade in during the hold frames.
     """
     from src.renderer import StravaRenderer
     from src.tiles import fetch_map_tile

@@ -18,7 +18,8 @@ CANVAS_ROTATION_DEGREES = 29
 # The intermediate canvas is computed from these dimensions:
 #   render_w = 4800*cos(29°) + 5800*sin(29°) ≈ 7010
 #   render_h = 4800*sin(29°) + 5800*cos(29°) ≈ 7400
-#   7010/7400 ≈ 0.9473 (matches NYC geo_aspect → no distortion)
+# The renderer pads CITY_BOUNDS to the 4800×5800 unrotated frame before
+# expanding both for rotation, preserving equal Mercator scale on both axes.
 CANVAS_RENDER_WIDTH  = 4800
 CANVAS_RENDER_HEIGHT = 5800
 
@@ -54,3 +55,15 @@ TYPOGRAPHY_X_OFFSET = -400
 SHOW_ELEVATION = False
 
 LEGEND_Y_OFFSET = 40
+
+# NYC keeps the original indigo/violet/pink scheme explicitly — SF's default
+# ROUTE_COLOR_RAMP moved to green, but NYC isn't meant to change with it.
+ROUTE_COLOR_RAMP = [
+    (0.0,  [100, 100, 255]),   # rarely-run → brighter indigo (more luminous, same hue)
+    (0.45, [200,   0, 255]),   # moderate   → electric violet
+    (0.8,  [255,   0, 180]),   # heavy      → neon hot pink
+    (1.0,  [255, 220, 255]),   # peak       → blown-out pink-white (kept at 220 so g > 200 test passes)
+]
+GAMMA = 0.4
+HOT_BLOOM_THRESHOLD = 0.75
+HOT_BLOOM_SIGMA_MULT = 5.0

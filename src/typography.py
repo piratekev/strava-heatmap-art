@@ -20,7 +20,7 @@ def _download_font(font_path, url):
         print(f"Downloading font to {font_path}...")
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=30) as response:
                 with open(font_path, "wb") as f:
                     f.write(response.read())
         except Exception as e:
@@ -45,7 +45,8 @@ def render_typography(img, sf_runs, font_path,
     Returns the modified image.
     """
     years = sorted({r["start_date"][:4] for r in sf_runs})
-    year_range = f"{years[0]} \u2013 {years[-1]}" if len(years) > 1 else years[0]
+    year_range = (f"{years[0]} \u2013 {years[-1]}" if len(years) > 1
+                  else years[0] if years else "No activities")
     total_runs = f"{len(sf_runs):,} runs"
     total_miles = sum(r["distance"] for r in sf_runs) / METERS_PER_MILE
     total_dist = f"{total_miles:,.0f} mi"
@@ -81,6 +82,21 @@ def render_typography(img, sf_runs, font_path,
         draw.text((x, y), text, font=f, fill=text_color)
         y -= line_gap
 
+    return img
+
+
+def render_attribution(img, text, font_path):
+    """Keep basemap credits legible on the final, cropped print."""
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    margin = max(4, h // 100)
+    size = max(7, h // 180)
+    font = _load_font(font_path, size)
+    while size > 6 and draw.textbbox((0, 0), text, font=font)[2] > w - 2 * margin:
+        size -= 1
+        font = _load_font(font_path, size)
+    draw.text((margin, h - margin), text, font=font, anchor="ls",
+              fill=(255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0))
     return img
 
 

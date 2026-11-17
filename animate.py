@@ -5,8 +5,8 @@ Generate a timelapse animation from Strava running data.
 Usage:
     python animate.py                          # sequential mode, full render
     python animate.py --mode parallel          # all runs draw simultaneously (15s)
-    python animate.py --config nyc             # NYC render
-    python animate.py --preview                # half resolution, no hold
+    python animate.py --config my_city         # north-up city; NYC rotation unsupported
+    python animate.py --preview                # half resolution; no sequential hold
     python animate.py --fetch                  # fetch new activities first
     python animate.py --output foo.mp4         # custom output path
 """
@@ -40,7 +40,8 @@ def main():
     parser.add_argument("--config", default="sf")
     parser.add_argument("--mode", choices=["sequential", "parallel"], default="sequential")
     parser.add_argument("--fetch", action="store_true")
-    parser.add_argument("--preview", action="store_true", help="Half resolution, no hold")
+    parser.add_argument("--preview", action="store_true",
+                        help="Half resolution; no sequential hold, 1s parallel hold")
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
 
