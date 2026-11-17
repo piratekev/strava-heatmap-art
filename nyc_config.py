@@ -18,7 +18,8 @@ CANVAS_ROTATION_DEGREES = 29
 # The intermediate canvas is computed from these dimensions:
 #   render_w = 4800*cos(29°) + 5800*sin(29°) ≈ 7010
 #   render_h = 4800*sin(29°) + 5800*cos(29°) ≈ 7400
-#   7010/7400 ≈ 0.9473 (matches NYC geo_aspect → no distortion)
+# The renderer pads CITY_BOUNDS to the 4800×5800 unrotated frame before
+# expanding both for rotation, preserving equal Mercator scale on both axes.
 CANVAS_RENDER_WIDTH  = 4800
 CANVAS_RENDER_HEIGHT = 5800
 

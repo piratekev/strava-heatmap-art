@@ -10,7 +10,7 @@ CITY_BOUNDS = {
 CANVAS_WIDTH_PX  = 4720   # was 4680 — +40px west
 CANVAS_HEIGHT_PX = 5900   # was 5850 — +50px south (maintains 4:5 ratio)
 PRINT_DPI = 285
-CANVAS_ROTATION_DEGREES = 0  # degrees clockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
+CANVAS_ROTATION_DEGREES = 0  # degrees counterclockwise. 0 = north-up (SF). 29 = Manhattan-axis-up (NYC).
 
 # Optional: decouple intermediate canvas scale from final output dimensions.
 # When set, the intermediate canvas is computed from these dimensions instead of
@@ -151,10 +151,12 @@ MAP_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
 #   11 = fast preview, city-level blobs
 #   13 = neighbourhood streets visible
 #   15 = neighbourhood detail — clear streets, ~150 tiles for SF
-#   16 = current default — sharper detail (~600 tiles, 2–3 min first download)
+#   16 = sharper detail (~600 tiles, 2–3 min first download)
 #   17 = near-max print quality (~2,400 tiles — may hit CARTO rate limits)
 # Set high (16–17) only when producing the final print file.
 MAP_TILE_ZOOM = 17
+MAP_PREVIEW_TILE_ZOOM = 11
+MAP_ATTRIBUTION = "© OpenStreetMap contributors, © CARTO"
 
 MAP_TILE_OPACITY = 0.85   # lightened for more visible street grid
 # Brightness multiplier applied to the map tile before compositing.

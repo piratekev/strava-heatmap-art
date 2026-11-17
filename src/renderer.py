@@ -69,14 +69,25 @@ class StravaRenderer:
             self._crop_y = None
 
         if CANVAS_ROTATION_DEGREES != 0:
-            cos_r = math.cos(math.radians(CANVAS_ROTATION_DEGREES))
-            sin_r = math.sin(math.radians(CANVAS_ROTATION_DEGREES))
+            cos_r = abs(math.cos(math.radians(CANVAS_ROTATION_DEGREES)))
+            sin_r = abs(math.sin(math.radians(CANVAS_ROTATION_DEGREES)))
             self.width  = int(render_w * cos_r + render_h * sin_r)
             self.height = int(render_w * sin_r + render_h * cos_r)
-            self.bounds = _expand_bounds(
+            merc_span = (math.asinh(math.tan(math.radians(CITY_BOUNDS["lat_max"]))) -
+                         math.asinh(math.tan(math.radians(CITY_BOUNDS["lat_min"]))))
+            geo_aspect = math.radians(CITY_BOUNDS["lng_max"] - CITY_BOUNDS["lng_min"]) / merc_span
+            frame_aspect = (render_w - 1) / (render_h - 1)
+            # Pad the unrotated frame before oversizing it. Matching CITY_BOUNDS
+            # directly to the oversized canvas and then expanding it distorts NYC.
+            frame_bounds = _expand_bounds(
                 CITY_BOUNDS,
-                lng_scale=self.width  / render_w,
-                lat_scale=self.height / render_h,
+                lng_scale=max(1.0, frame_aspect / geo_aspect),
+                lat_scale=max(1.0, geo_aspect / frame_aspect),
+            )
+            self.bounds = _expand_bounds(
+                frame_bounds,
+                lng_scale=(self.width - 1) / (render_w - 1),
+                lat_scale=(self.height - 1) / (render_h - 1),
             )
         else:
             self.width  = render_w

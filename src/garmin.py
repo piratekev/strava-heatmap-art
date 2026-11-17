@@ -134,12 +134,15 @@ def login(mfa_code=None):
 def fetch_garmin_activities(api, cache_dir="data", start_date=None):
     """Fetch Garmin runs since the latest cached activity and append them to the cache."""
     cache_file = os.path.join(cache_dir, "activities.json")
-    with open(cache_file) as f:
-        existing = json.load(f)
+    os.makedirs(cache_dir, exist_ok=True)
+    existing = []
+    if os.path.exists(cache_file):
+        with open(cache_file) as f:
+            existing = json.load(f)
 
     if start_date is None:
-        latest = max(a["start_date"] for a in existing if a.get("start_date"))
-        start_date = latest[:10]
+        latest = max((a["start_date"] for a in existing if a.get("start_date")), default=None)
+        start_date = latest[:10] if latest else "1970-01-01"
 
     summaries = api.get_activities_by_date(start_date, sortorder="asc")
     converted = []
@@ -151,7 +154,7 @@ def fetch_garmin_activities(api, cache_dir="data", start_date=None):
             converted.append(act)
 
     added = merge_new(existing, converted)
-    if added:
+    if added or not os.path.exists(cache_file):
         with open(cache_file, "w") as f:
             json.dump(existing + added, f)
     print(f"Garmin: {len(summaries)} activities since {start_date}, "

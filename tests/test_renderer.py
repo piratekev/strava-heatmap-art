@@ -330,30 +330,34 @@ def test_sf_bounds_aspect_ratio_matches_canvas():
     )
 
 
-def test_nyc_intermediate_canvas_aspect_matches_bounds():
-    """NYC intermediate canvas (pre-rotation) must match the Mercator aspect ratio of CITY_BOUNDS."""
-    import math
-    import importlib
-    nyc = importlib.import_module("nyc_config")
-
-    b = nyc.CITY_BOUNDS
+@pytest.mark.parametrize("scale", [0.1, 1.0])
+@pytest.mark.parametrize("rotation", [29, -29])
+def test_nyc_intermediate_canvas_aspect_matches_bounds(monkeypatch, scale, rotation):
+    """Check the actual renderer's expanded bounds, not a duplicate size formula."""
+    import nyc_config as nyc
+    import src.renderer as module
+    for name in ("CITY_BOUNDS", "CANVAS_WIDTH_PX", "CANVAS_HEIGHT_PX",
+                 "CANVAS_RENDER_WIDTH", "CANVAS_RENDER_HEIGHT", "CANVAS_CROP_X", "CANVAS_CROP_Y"):
+        monkeypatch.setattr(module, name, getattr(nyc, name))
+    monkeypatch.setattr(module, "CANVAS_ROTATION_DEGREES", rotation)
+    r = module.StravaRenderer(width=int(nyc.CANVAS_WIDTH_PX * scale),
+                              height=int(nyc.CANVAS_HEIGHT_PX * scale))
+    b = r.bounds
     lng_range_rad = (b["lng_max"] - b["lng_min"]) * math.pi / 180
     merc_max = math.asinh(math.tan(math.radians(b["lat_max"])))
     merc_min = math.asinh(math.tan(math.radians(b["lat_min"])))
     geo_aspect = lng_range_rad / (merc_max - merc_min)
 
-    rot_rad = math.radians(nyc.CANVAS_ROTATION_DEGREES)
-    cos_r, sin_r = math.cos(rot_rad), math.sin(rot_rad)
-    # Use CANVAS_RENDER_WIDTH/HEIGHT when set — these drive the intermediate canvas scale.
-    W = nyc.CANVAS_RENDER_WIDTH  or nyc.CANVAS_WIDTH_PX
-    H = nyc.CANVAS_RENDER_HEIGHT or nyc.CANVAS_HEIGHT_PX
-    render_w = W * cos_r + H * sin_r
-    render_h = W * sin_r + H * cos_r
-    canvas_aspect = render_w / render_h
-
-    assert abs(canvas_aspect - geo_aspect) < 0.005, (
-        f"NYC intermediate aspect {canvas_aspect:.4f} != geo aspect {geo_aspect:.4f}"
-    )
+    canvas_aspect = (r.width - 1) / (r.height - 1)
+    assert canvas_aspect == pytest.approx(geo_aspect, rel=1e-10)
+    assert r.canvas.shape == (r.height, r.width)
+    assert b["lng_min"] <= nyc.CITY_BOUNDS["lng_min"]
+    assert b["lng_max"] >= nyc.CITY_BOUNDS["lng_max"]
+    assert b["lat_min"] <= nyc.CITY_BOUNDS["lat_min"]
+    assert b["lat_max"] >= nyc.CITY_BOUNDS["lat_max"]
+    if scale == 0.1:
+        result = r.rotate_and_crop(np.zeros((r.height, r.width, 3), dtype=np.uint8))
+        assert result.shape == (r.final_height, r.final_width, 3)
 
 
 def test_rotate_and_crop_is_noop_when_rotation_zero():
@@ -382,14 +386,11 @@ def test_rotate_and_crop_returns_final_dimensions():
     assert result.shape == (120, 100, 3)
 
 
-def test_renderer_oversized_when_rotation_nonzero():
+def test_renderer_oversized_when_rotation_nonzero(monkeypatch):
     """When CANVAS_ROTATION_DEGREES != 0, renderer internal canvas is larger than final dims."""
-    import math
+    import src.renderer as module
+    monkeypatch.setattr(module, "CANVAS_ROTATION_DEGREES", 29)
     r = StravaRenderer(width=100, height=120)
-    r._rotation_degrees = 29
-    cos_r, sin_r = math.cos(math.radians(29)), math.sin(math.radians(29))
-    expected_w = int(100 * cos_r + 120 * sin_r)
-    expected_h = int(100 * sin_r + 120 * cos_r)
-    # Simulate what __init__ would compute — just verify the formula
-    assert expected_w > 100
-    assert expected_h > 120
+    assert r.width > 100
+    assert r.height > 120
+    assert r.canvas.shape == (r.height, r.width)
