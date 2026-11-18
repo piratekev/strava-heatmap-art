@@ -1,48 +1,18 @@
+"""Unit tests for animation traversal, color, dots, typography, and encoding."""
 import math
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+from PIL import Image
 import pytest
-from src.animator import haversine_miles, compute_frame_miles
 
-
-def test_haversine_same_point_is_zero():
-    assert haversine_miles(37.76, -122.45, 37.76, -122.45) == pytest.approx(0.0)
-
-
-def test_haversine_known_distance():
-    # SF City Hall to ~1 mile north: rough check within 5%
-    miles = haversine_miles(37.7749, -122.4194, 37.7904, -122.4194)
-    assert 0.95 < miles < 1.15
-
-
-def test_compute_frame_miles_full_segment():
-    # geo_coords: two points ~1 mile apart
-    geo = [(37.7749, -122.4194), (37.7904, -122.4194)]
-    miles = compute_frame_miles(geo, 0, 0.0, 0, 1.0)
-    assert 0.95 < miles < 1.15
-
-
-def test_compute_frame_miles_half_segment():
-    geo = [(37.7749, -122.4194), (37.7904, -122.4194)]
-    full = compute_frame_miles(geo, 0, 0.0, 0, 1.0)
-    half = compute_frame_miles(geo, 0, 0.0, 0, 0.5)
-    assert half == pytest.approx(full / 2, rel=0.01)
-
-
-def test_compute_frame_miles_spans_two_segments():
-    # Three points: A→B ~0.5mi, B→C ~0.5mi
-    geo = [(37.7749, -122.4194), (37.7826, -122.4194), (37.7904, -122.4194)]
-    # Full path from start of seg0 to end of seg1
-    miles = compute_frame_miles(geo, 0, 0.0, 1, 1.0)
-    assert 0.95 < miles < 1.15
-
-
-def test_compute_frame_miles_zero_distance():
-    geo = [(37.7749, -122.4194), (37.7904, -122.4194)]
-    assert compute_frame_miles(geo, 0, 0.5, 0, 0.5) == pytest.approx(0.0)
-
+from src.animator import (
+    advance_cursor, build_run_pixel_coords, canvas_to_rgb, check_ffmpeg,
+    open_ffmpeg_pipe, paint_dot, render_animation_typography,
+)
 
 # ── Cursor ────────────────────────────────────────────────────────────────────
 
-from src.animator import advance_cursor
 
 
 def test_advance_cursor_within_single_segment():
@@ -97,8 +67,6 @@ def test_advance_cursor_zero_length_last_segment_clamps():
 
 # ── Color mapping ─────────────────────────────────────────────────────────────
 
-import numpy as np
-from src.animator import canvas_to_rgb
 
 
 def test_canvas_to_rgb_all_zero_is_bg_color():
@@ -135,7 +103,6 @@ def test_canvas_to_rgb_shape_preserved():
 
 # ── Dot rendering ─────────────────────────────────────────────────────────────
 
-from src.animator import paint_dot
 
 
 def test_paint_dot_center_is_white():
@@ -167,8 +134,6 @@ def test_paint_dot_clipped_at_edge():
 
 # ── Typography ────────────────────────────────────────────────────────────────
 
-from PIL import Image
-from src.animator import render_animation_typography
 
 
 def test_render_animation_typography_returns_image():
@@ -187,20 +152,18 @@ def test_render_animation_typography_returns_image():
 
 def test_render_animation_typography_modifies_pixels():
     img = Image.new("RGB", (1080, 1350), (0, 0, 0))
-    before = list(img.getdata())
+    before = np.array(img)
     result = render_animation_typography(
         img, "Jan 2020", 1, 0,
         font_path="data/fonts/Montserrat-SemiBold.ttf",
         scale=1.0,
     )
-    after = list(result.getdata())
-    assert before != after  # some pixels changed (text was drawn)
+    after = np.array(result)
+    assert not np.array_equal(before, after)  # text changed some pixels
 
 
 # ── ffmpeg pipe ───────────────────────────────────────────────────────────────
 
-from unittest.mock import patch, MagicMock
-from src.animator import check_ffmpeg, open_ffmpeg_pipe
 
 
 def test_check_ffmpeg_passes_when_available():
@@ -228,7 +191,6 @@ def test_open_ffmpeg_pipe_uses_correct_args():
 
 # ── Animation loop helpers ────────────────────────────────────────────────────
 
-from src.animator import compute_total_frames, build_run_pixel_coords
 
 
 def _make_renderer(width=200, height=250):
@@ -247,24 +209,6 @@ def _make_run(coords):
     }
 
 
-def test_compute_total_frames_proportional_to_distance():
-    renderer = _make_renderer()
-    run_a = _make_run([(37.77, -122.45), (37.78, -122.45)])
-    run_b = _make_run([(37.77, -122.45), (37.77, -122.44)])  # similar length
-    frames_a = compute_total_frames([run_a], renderer, drawing_speed=10)
-    frames_b = compute_total_frames([run_b], renderer, drawing_speed=10)
-    # Both should produce some frames; difference < 50% of mean
-    assert frames_a > 0
-    assert frames_b > 0
-
-
-def test_compute_total_frames_zero_for_single_point_run():
-    renderer = _make_renderer()
-    run = _make_run([(37.77, -122.45)])  # only one point, no segments
-    frames = compute_total_frames([run], renderer, drawing_speed=10)
-    assert frames == 0
-
-
 def test_build_run_pixel_coords_single_point_run_returns_one_point():
     renderer = _make_renderer()
     run = _make_run([(37.77, -122.45)])
@@ -278,160 +222,3 @@ def test_build_run_pixel_coords_returns_list_of_tuples():
     px = build_run_pixel_coords(run, renderer)
     assert len(px) == 2
     assert all(isinstance(p, tuple) and len(p) == 2 for p in px)
-
-
-# ── Loop invariant tests ──────────────────────────────────────────────────────
-
-from unittest.mock import patch, MagicMock
-
-
-def _make_renderer_for_loop(width=100, height=125):
-    from src.renderer import StravaRenderer
-    return StravaRenderer(width=width, height=height)
-
-
-def _make_run_for_loop(coords, start_date="2020-01-01T00:00:00Z"):
-    return {
-        "id": 1,
-        "coords": coords,
-        "start_date": start_date,
-        "distance": 1000.0,
-        "average_speed": 3.0,
-        "total_elevation_gain": 10.0,
-    }
-
-
-def _make_anim_config(width=100, height=125):
-    class Cfg:
-        ANIMATION_FPS = 10
-        ANIMATION_DRAWING_SPEED = 500   # large speed → one frame per run
-        ANIMATION_DOT_RADIUS = 3
-        ANIMATION_DOT_BLUR = 0
-        ANIMATION_HOLD_SECONDS = 0
-        ANIMATION_OUTPUT_RESOLUTION = (width, height)
-    return Cfg
-
-
-def _mock_tile(width, height):
-    from PIL import Image
-    return Image.new("RGB", (width, height), (30, 30, 30))
-
-
-def test_final_log_max_matches_prepass():
-    """final_log_max from pre-pass equals np.log1p(canvas).max() after rasterizing all runs."""
-    from src.renderer import StravaRenderer
-    run = _make_run_for_loop([(37.77, -122.45), (37.78, -122.44), (37.79, -122.43)])
-    W, H = 100, 125
-    renderer = StravaRenderer(width=W, height=H)
-    renderer.rasterize_all([run])
-    expected_log_max = float(np.log1p(renderer.canvas).max())
-    assert expected_log_max > 0
-    # Verify log1p max matches canvas max via log1p
-    assert np.isclose(expected_log_max, np.log1p(renderer.canvas.max()))
-
-
-def test_run_count_increments_for_short_run():
-    """Runs with <2 points increment run_count but leave mileage unchanged."""
-    from src.animator import run_animation
-    W, H = 100, 125
-    cfg = _make_anim_config(W, H)
-
-    runs = [
-        _make_run_for_loop([(37.77, -122.45)], "2020-01-01T00:00:00Z"),   # <2 pts
-        _make_run_for_loop([(37.77, -122.45), (37.78, -122.44)], "2020-01-02T00:00:00Z"),
-    ]
-
-    written_frames = []
-
-    class FakeProc:
-        stdin = MagicMock()
-        def wait(self): pass
-
-    fake_proc = FakeProc()
-    fake_proc.stdin.write = lambda b: written_frames.append(len(b))
-    fake_proc.stdin.close = lambda: None
-
-    tile = _mock_tile(W, H)
-
-    with patch("src.animator.open_ffmpeg_pipe", return_value=fake_proc), \
-         patch("src.animator.check_ffmpeg"), \
-         patch("src.tiles.fetch_map_tile", return_value=tile), \
-         patch("src.typography._download_font"), \
-         patch("src.typography.render_legend", return_value=Image.new("RGB", (W, H), (0,0,0))), \
-         patch("src.animator.render_animation_typography", side_effect=lambda img, *a, **kw: img):
-        run_animation(runs, "/tmp/test-anim-short-run.mp4", cfg)
-
-    # At least one frame was written (from the 2-point run)
-    assert len(written_frames) > 0
-
-
-def test_mileage_monotonically_non_decreasing():
-    """Accumulated mileage never decreases across frames."""
-    from src.animator import (
-        advance_cursor, compute_frame_miles, build_run_pixel_coords,
-        canvas_to_rgb, paint_dot, render_animation_typography,
-    )
-    from src.renderer import StravaRenderer
-    from src.typography import _download_font
-    from config import ROUTE_COLOR_RAMP, BG_COLOR, GAMMA, MAP_FONT_PATH, MAP_FONT_URL
-    import math
-
-    W, H = 100, 125
-    renderer = StravaRenderer(width=W, height=H)
-    run = _make_run_for_loop([
-        (37.77, -122.45), (37.775, -122.44), (37.78, -122.43), (37.785, -122.42)
-    ])
-
-    px_coords = build_run_pixel_coords(run, renderer)
-    geo_coords = run["coords"]
-    accumulation = np.zeros((H, W), dtype=np.float32)
-    final_log_max = 1.0   # dummy anchor
-
-    total_miles = 0.0
-    prev_miles = 0.0
-    seg_idx, t = 0, 0.0
-    drawing_speed = 5   # small → multiple frames
-
-    while True:
-        new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, drawing_speed)
-        if drawn:
-            frame_miles = compute_frame_miles(geo_coords, seg_idx, t, new_seg, new_t)
-            total_miles += frame_miles
-        assert total_miles >= prev_miles, f"mileage decreased: {prev_miles} → {total_miles}"
-        prev_miles = total_miles
-        seg_idx, t = new_seg, new_t
-        if seg_idx >= len(px_coords) - 2 and t >= 1.0:
-            break
-
-
-def test_run_count_equals_n_on_first_frame_of_run_n():
-    """run_count equals N on all frames of run N (including the first frame)."""
-    # Simulate the per-run logic directly (no ffmpeg needed)
-    from src.animator import advance_cursor
-    from src.renderer import StravaRenderer
-
-    W, H = 100, 125
-    renderer = StravaRenderer(width=W, height=H)
-    runs = [
-        _make_run_for_loop([(37.77, -122.45), (37.78, -122.44)], "2020-01-01T00:00:00Z"),
-        _make_run_for_loop([(37.78, -122.44), (37.79, -122.43)], "2020-01-02T00:00:00Z"),
-    ]
-
-    run_count = 0
-    for n, run in enumerate(sorted(runs, key=lambda r: r["start_date"]), start=1):
-        geo_coords = run["coords"]
-        if len(geo_coords) < 2:
-            run_count += 1
-            continue
-        from src.animator import build_run_pixel_coords
-        px_coords = build_run_pixel_coords(run, renderer)
-        run_count += 1
-        # On the first frame, run_count must equal n
-        assert run_count == n, f"run_count={run_count} but n={n} at first frame of run {n}"
-        # Drain rest of run (not strictly needed but mirrors the loop)
-        seg_idx, t = 0, 0.0
-        while True:
-            new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, 500)
-            seg_idx, t = new_seg, new_t
-            if seg_idx >= len(px_coords) - 2 and t >= 1.0:
-                break

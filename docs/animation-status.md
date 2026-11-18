@@ -1,169 +1,145 @@
 # Animation branch status
 
-Reviewed 2026-11-15 against local `main` at `d3afbd2`.
+The P1/P2 defects and smaller gaps identified in the 2026-11-15 review are
+fixed on `feature/animation`. Latest local `main` was already integrated;
+poster entry points and main's authentication, fetching, and tile hardening
+remain intact.
 
-## Recommendation
+## Completed fixes
 
-**Do not merge `feature/animation` into `main` yet.** The latest main changes
-are integrated, poster compatibility is preserved, and both video modes encode
-successfully with valid inputs. Animation density, encoder failures, attribution,
-and configuration integration still need fixes.
+| Finding | Repair |
+|---|---|
+| P1: parallel overlap erased visits | Each run contributes its own coverage; overlapping runs add independently. |
+| P1: ffmpeg failures reported success | Check exit status and nonempty output, propagate failure, and reap the process on every exit. |
+| P2: density depended on frame boundaries | Rasterize each complete segment once; reveal the union of each run's pixels by first path distance. Retracing and split-frame endpoints do not add visits. |
+| P2: incompatible normalization | Compute the fixed anchor from exactly those animation-scaled per-run masks, without the poster's bonus-stroke pass. |
+| P2: missing video attribution | Burn `MAP_ATTRIBUTION` into every frame after other overlays, and set MP4 copyright metadata. Small-frame credits wrap instead of clipping whole words. |
+| P2: Garmin ignored by `--fetch` | Dispatch through `fetch_from_source(FETCH_SOURCE)`, shared with the poster CLI. |
+| P2: dot brightness dropped | Derive effective config from all active settings and override only documented preview values. |
+| P2: parallel map opacity ignored | Both modes use one scene compositor honoring `MAP_TILE_OPACITY`. |
+| P2: invalid settings could stall or break encoding | Validate positive finite FPS/speeds, even positive integer dimensions, nonnegative dot/hold values, integer ramp/radius, and a positive parallel drawing-frame count before assets/fetching. |
+| P2: custom output parents missing | Create selected parents automatically. |
+| P3: endpoint rounding | Tolerant cursor completion and explicit fixed-schedule parallel endpoint completion. |
+| P3: one-frame hold hid stats | A single hold frame uses full stats opacity. Zero-hold parallel output shows stats on its final drawing frame. |
+| P3: missing/empty cache errors | Actionable CLI errors for missing, unreadable, invalid-list, empty, and unmatched caches. |
+| P3: inconsistent/lost mileage | Both modes use the same cached-distance prefix totals over all filtered activities. Sequential mileage advances with route progress; short/collapsed routes retain their full cached distance. |
+| P3: inaccurate progress counts | Count the sequential rendering schedule itself, including ramps, deceleration, opening, fade, and holds. Parallel counts include opening. |
+| Test deprecations | Replace Pillow `getdata()` snapshots with NumPy arrays. |
 
-This integration deliberately documents the existing animation defects rather
-than silently changing the feature's rendering behavior.
+Both modes now share projection/coverage preparation, normalization, map/legend
+compositing, credits, and encoder lifecycle. Animation reuses the shared mileage
+constant and composed-map cache naming. Coverage storage is sparse per run,
+with temporary masks bounded to the visible route/segment rather than retaining
+a full floating-point canvas for every active run.
 
-## Differences from main
+Merge preparation removes the obsolete Haversine mileage helpers, unused
+alternate frame estimator, and copied-loop tests. Single and batched dots share
+one blending implementation, preserving brightness-before-alpha semantics.
+The scene loads its statistics font once and reuses its completed sequential
+background for fade/hold frames, without applying attribution repeatedly.
+Tests assert the real entry points' final mileage/count/date population,
+intermediate mileage, font loads, and unchanged hold pixels.
 
-- `animate.py` adds sequential and parallel H.264 MP4 export via ffmpeg.
-- `src/animator.py` adds projected-route traversal, fixed pre-pass normalization,
-  per-frame density/color effects, cursor/tracer dots, live stats, and encoding.
-- `config.py` adds animation timing, resolution, and dot controls. Main's green
-  SF palette and NYC-specific styling remain intact.
-- `render.py` is the canonical poster CLI. `export.py` forwards to it, preserving
-  main's existing command line rather than deleting it.
-- Main's full-history Strava reconciliation, OAuth fixes, Garmin support,
-  safe/resumable map caching, poster attribution, error handling, and isolated
-  tests are retained. The animation fetch path does not yet use all of these
-  shared entry-point behaviors.
-- The original animation design and implementation plan are marked historical.
-  Current usage is documented in [README](../README.md#animation-animatepy)
-  and [CLAUDE.md](../CLAUDE.md).
+Encoding writes a temporary sibling MP4. Only successful completion replaces
+the requested destination. Failed writes, failed close/flush, nonzero exit,
+empty output, timeout, and cancellation preserve an existing destination and
+remove the temporary file. Cancellation during encoder finalization is covered,
+not just cancellation while drawing.
 
-## Before merging
+## Validation
 
-### [P1] Preserve overlapping parallel route contributions
+- **289 tests passed** with `.venv/bin/pytest tests/ -q`, without warnings.
+- Density tests compare both modes at 1, 5, and 160 px/frame and 2/10 fps
+  against independent full-frame OpenCV masks. They cover coincident routes,
+  diagonal segments, retracing, repeated endpoints, and monotonic intermediate
+  accumulation. Both final density and normalization anchors agree.
+- Sparse rasterization also matches independent full-canvas strokes in 150
+  deterministic clipped-route cases across thicknesses 1, 2, 3, 4, and 7.
+- Completed frames match an independent same-resolution static renderer with
+  the same coverage and optional effects disabled, plus shared attribution.
+  This is not a claim of full-poster visual parity.
+- Regression tests cover exact endpoint completion, matching cached mileage,
+  short/collapsed routes and trailing activities without drawing/fade/hold,
+  map opacity, attribution on all frame phases, zero/one/many-frame holds,
+  invalid configuration, and reported versus actual frame counts.
+- Real CLI tests encode and fully decode sequential/parallel videos and both
+  previews using synthetic activities and offline map/font services. They
+  verify H.264/yuv420p, dimensions, copyright metadata, nested output creation,
+  and exact reported/probed frame counts.
+- CLI tests exercise configured Garmin dispatch and preview/brightness
+  forwarding without credentials or live requests.
+- Real ffmpeg failure and cancellation checks cover both entry points,
+  preserving an existing destination and leaving no temporary video or running
+  encoder. Unit checks additionally cover close failures, empty output,
+  timeouts, and cancellation during close/wait.
+- The real `.env`, activity JSON, cache metadata, and preexisting untracked
+  Amsterdam map image remained byte-for-byte unchanged.
 
-In [the parallel drawing loop](../src/animator.py#L745), all routes draw `1`
-into one shared frame buffer. Overlaps overwrite one another instead of adding
-each run's contribution. A synthetic check with two identical routes produced
-exactly the same final accumulation as one route: peak `1`, sum `18` in both
-cases. Use separate per-run masks/contributions before combining them.
+### Full SF render review
 
-### [P1] Propagate encoder failures instead of reporting success
+On 2026-11-16, both modes rendered all **680 SF runs** offline from the genuine
+cached zoom-15 map, at **1080×1350, 60 fps**, with the then-current rendering
+code. Both fully decoded, matched their reported frame counts, and carried
+copyright metadata. The user approved their appearance, while requesting
+matching mileage. Those original review videos are preserved unchanged.
 
-Both renderers discard [ffmpeg's exit status](../src/animator.py#L585).
-A real CLI/ffmpeg check at 16×20, 1 fps, targeting a nonexistent parent directory
-returned **exit code 0**, printed `Done.`, and created **no video**.
-Check encoder status and output success before reporting completion.
+| Mode | Frames | Video duration | File size | Render wall time |
+|---|---:|---:|---:|---:|
+| Sequential | 5,318 | 88.633 s | 10.09 MB | 931.09 s |
+| Parallel | 961 | 16.017 s | 3.58 MB | 148.37 s |
 
-Also ensure cleanup always waits for ffmpeg: a `BrokenPipeError` during
-`stdin.close()` currently skips the following `wait()` in both modes.
+These are warm-cache observations on this machine, before the mileage/cleanup
+change, not portable performance guarantees or measurements of the final
+cleanup. No claim of cold-download readiness is made.
 
-### [P2] Make density independent of frame boundaries and drawing speed
+After the mileage/cleanup change, fresh processes rendered both modes through
+the real CLI's `--preview` path using all 680 cached SF runs. Both final frames
+show **680 runs, 4,935 mi**, matching the independently summed cached distances.
+Sequential displayed mileage was monotonic from zero. Both outputs fully
+decoded as H.264/yuv420p at 540×674/60 fps, with matching reported/probed counts
+and copyright metadata:
 
-[Sequential accumulation](../src/animator.py#L535) repeatedly adds inclusive
-segment endpoints as new per-frame masks. Parallel drawing has the same boundary
-problem. With the same two routes, changing sequential drawing speed from
-160 to 5 px/frame changed the final sum from `36` to `47` and peak from `2` to `4`.
-Track each run's already-contributed pixels so splitting it across frames does
-not create extra visits.
+| Corrected preview | Frames | Video duration | Render wall time |
+|---|---:|---:|---:|
+| Sequential | 2,788 | 46.467 s | 92.86 s |
+| Parallel | 961 | 16.017 s | 28.24 s |
 
-### [P2] Align the normalization pre-pass with animation rasterization
+These measure the final cleanup at preview resolution, not an inferred
+full-resolution speedup. Original review videos, credentials, activity/cache
+metadata, and the preexisting Amsterdam image remained unchanged.
 
-The [pre-pass](../src/animator.py#L403) uses the poster's unscaled strokes and
-density-bonus pass, while animation uses scaled base strokes without that pass.
-In the same 32×40 synthetic case, pre-pass peak/sum were `4` / `922`, versus
-sequential fast-animation `2` / `36`. Even after fixing frame-boundary and
-parallel overlap errors, the anchor must describe the canvas actually produced
-by the animation, not a differently rasterized poster.
+### Cleanup and compatibility review
 
-### [P2] Carry provider attribution into the video
+The committed branch diff against `origin/main` plus the task's unstaged
+repairs and regression tests received reuse, quality/provenance, and efficiency
+reviews. No additional high-confidence merge blocker was found. The removed
+animation helpers existed only on this unmerged branch, not the comparison
+base, so no compatibility wrappers remain for them.
 
-Both animation modes require a map, but neither frame builder burns in
-`MAP_ATTRIBUTION`, and [the encoder](../src/animator.py#L270) sets no copyright
-metadata. Reuse the shared attribution renderer so credit survives standalone
-MP4 sharing, not just publication captions.
+Retained helpers have current consumers: sparse coverage/reveal, the shared
+scene, exact traversal scheduling, validation, encoder lifecycle, and date/
+projection helpers. Poster/live typography and source-specific retry/reconcile
+logic remain separate because their contracts differ. The `export.py` alias,
+city-config injection/crop hooks, and font fallback preserve interfaces present
+on the comparison base. Public CARTO runtime/fixture images remain deliberately
+separate for independent validation.
 
-### [P2] Honor Garmin source selection in animation fetches
+## Remaining limits
 
-[`animate.py --fetch`](../animate.py#L48) always constructs a Strava client.
-An isolated Garmin-configured invocation failed asking for `STRAVA_CLIENT_ID`.
-Delegate through `fetch_from_source(FETCH_SOURCE)`, as `render.py` does.
-Garmin-populated caches already animate without `--fetch`.
+These are documented feature/validation limits, not unresolved findings above:
 
-### [P2] Forward dot brightness from the active configuration
+- Rotated city presets (including bundled NYC) and intermediate canvases that
+  differ from the requested output dimensions remain unsupported.
+- Maps remain mandatory, fixed at zoom 15. There is no mapless animation
+  fallback. Fresh CARTO downloads may require an API key; the tile loader
+  rejects the known HTTP-200 placeholder.
+- Animation uses scaled base strokes and density-expand/hot-bloom effects, not
+  the poster's bonus strokes, broad glow, vignette, or grain. Pixel-identical
+  full-poster output is not promised.
+- The original full-resolution videos precede the mileage/cleanup correction;
+  their mileage text is not evidence for the corrected total.
+- Very tiny custom resolutions cannot provide readable map credits or stats;
+  use the default or normal preview resolution for publishable output.
 
-[`AnimConfig`](../animate.py#L66) omits `ANIMATION_DOT_BRIGHTNESS`.
-Capturing the actual config delivered by the CLI confirmed the attribute is
-missing, so the renderer uses `1.0` rather than the configured default `2.0`.
-Derive effective configuration from the active module or forward every setting.
-
-### [P2] Apply configured map opacity in parallel mode
-
-The [parallel compositor](../src/animator.py#L717) ignores `MAP_TILE_OPACITY`.
-With opacity zero and a synthetic `(40, 40, 40)` map, an untouched opening-frame
-pixel remained `(40, 40, 40)` instead of black. Share the poster/sequential
-compositing semantics.
-
-### [P2] Validate animation settings before starting the encoder
-
-A zero slow speed stalls the first run indefinitely. An instrumented CLI check
-observed three consecutive unchanged cursor states with zero budget before the
-probe intentionally stopped rendering. Reject nonpositive fast/slow speeds,
-FPS, drawing-frame counts, and invalid/odd output dimensions before expensive
-preprocessing. Final holds may legitimately be zero.
-
-### [P2] Create custom output parents
-
-[`--output new-directory/movie.mp4`](../animate.py#L86) never creates its
-parent. Create the selected parent directory, matching the poster CLI.
-The missing-directory encoder failure above is one concrete consequence.
-
-## Smaller verified gaps
-
-- **[P3] Finish parallel endpoints explicitly.** Ten one-pixel advances along
-  `(0, 0) → (10, 0)` leave fractional progress `0.9999999999999999`, so integer
-  rasterization ends at pixel `9` before the fixed drawing loop stops.
-- **[P3] Display stats for a one-frame hold.** The only frame uses
-  `alpha = 0 / max(0, 1) = 0`, making final stats invisible. See the
-  [fade loop](../src/animator.py#L774).
-- **[P3] Explain missing caches cleanly.** A fresh-cache animation invocation
-  raises `FileNotFoundError` instead of an actionable CLI error.
-- **[P3, source-reviewed] Preserve mileage for collapsed GPS segments.**
-  Sequential mileage updates are conditioned on `drawn`; geographic motion
-  that projects to identical integer pixels can advance the cursor without
-  contributing its distance.
-- **[P3] Correct progress reporting.** The sequential duration estimate omits
-  speed ramps, final deceleration, opening/fade frames, and per-run rounding.
-  Parallel `Done.` frame counts omit the opening frame. These logs must not
-  be used as exact timing/frame validators.
-- Two existing animator tests emit Pillow `getdata()` deprecation warnings.
-
-There is also duplicated scene preparation, density/color mapping, dot/text
-layout, distance constants, and mode-specific basemap cache naming. Consolidate
-these where it fixes the drift above; cosmetic restructuring alone is not a
-merge blocker.
-
-## Validation and limits
-
-- Full suite after integration: **187 passed**. This includes both poster CLI
-  names, SF/NYC previews, and the existing animation unit tests.
-- New `tests/test_animation_cli.py` uses real ffmpeg/ffprobe with synthetic
-  activities and offline map responses. Both modes produced fully decodable
-  80×100 H.264/yuv420p videos. The parallel fixture contains five frames:
-  opening + two drawing + two hold frames.
-- The isolated reproductions above use synthetic activity records and maps;
-  no live Strava/Garmin requests or private activity exports were needed.
-- Real `.env`, activity/cache metadata, and the preexisting untracked Amsterdam
-  map image were checked for byte-for-byte preservation during testing.
-- Full-duration 1080×1350 animation over the private real cache was **not**
-  benchmarked or visually approved in this review. Small smoke videos do not
-  prove full-history performance or final-poster parity.
-- Fresh CARTO downloads can require an API key. Placeholder images are rejected
-  by the merged tile loader. Animation still has no mapless fallback, hardcodes
-  zoom 15, and rejects rotated configurations (including the bundled NYC preset).
-  These are documented limitations, not claims of new support.
-
-## Follow-up acceptance checks
-
-1. Compare per-run accumulation and completed frames across drawing speeds and
-   FPS values, including coincident routes, retracing, zero-length segments,
-   and repeated endpoints.
-2. Compare the completed animation against an independently specified
-   same-resolution static reference with matching effects and normalization.
-3. Exercise both modes through the real CLI for Garmin dispatch, nested output,
-   ignored settings, missing assets, encoder failure, and cancellation.
-4. Assert visible video attribution and correct final stats for normal, zero,
-   and one-frame holds.
-5. Benchmark a complete real-history render with warm/cold asset caches before
-   publishing any duration or resource claims.
+The [README](../README.md#animation-animatepy) and [developer reference](../CLAUDE.md)
+describe current behavior. Records under `docs/superpowers/` remain historical.

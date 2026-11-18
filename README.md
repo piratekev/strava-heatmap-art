@@ -106,9 +106,10 @@ animations currently have no `--no-map` option or map-download fallback.
 
 **Sequential** (default) draws runs chronologically, with slower first/last runs,
 a decelerating cursor, a half-second cursor fade, and a three-second final hold.
-Live stats show month/year, run count, and miles traced from the GPS polyline.
-The printed duration estimate is approximate; it excludes the speed envelope,
-deceleration, opening frame, and cursor fade.
+Live stats show month/year, run count, and cached activity mileage. Mileage
+advances proportionally along each route and reaches its full cached distance.
+The printed frame count follows the actual speed envelope and includes
+deceleration, opening, cursor fade, and hold frames.
 
 ```bash
 python animate.py                         # 1080×1350
@@ -118,24 +119,27 @@ python animate.py --preview               # 540×674, no final hold; cursor fade
 **Parallel** starts all routes together at equal pixel speed. Shorter routes
 finish earlier; the longest finishes after 15 seconds by default. Small tracer
 dots mark active routes. Year range, run count, and cached activity mileage
-fade in during the one-second final hold.
+fade in during the one-second final hold. A one-frame hold shows full stats;
+with no hold, stats appear on the last drawing frame.
+
+Both modes use the same filtered activities and cached distances, including
+single-point and collapsed routes in their statistics. Final mileage is
+identical in both modes and displayed rounded down to whole miles.
 
 ```bash
 python animate.py --mode parallel
 python animate.py --mode parallel --preview  # same timing, half resolution, 1s hold
 ```
 
-**Refresh Strava first**, or choose a custom filename (create its parent first):
+**Refresh the configured source first**, or choose a custom filename:
 
 ```bash
 python animate.py --fetch
-mkdir -p output
-python animate.py --mode parallel --output output/sf-parallel.mp4
+python animate.py --mode parallel --output output/videos/sf-parallel.mp4
 ```
 
-`animate.py --fetch` currently fetches **Strava only**, even when `FETCH_SOURCE`
-is `"garmin"`. For Garmin, run `python garmin_fetch.py` first and animate from
-the shared cache without `--fetch`.
+`animate.py --fetch` honors `FETCH_SOURCE` (`"strava"` or `"garmin"`), just like
+the poster CLI. Missing output directories are created automatically.
 
 Both modes reject rotated configurations, including the built-in NYC preset.
 Custom north-up cities can use `--config <city>` with
@@ -145,10 +149,17 @@ Animation map zoom is currently fixed at **15**, independent of poster and
 preview map-zoom settings. Fresh CARTO downloads may require an API key.
 
 Default names are `output/animation[-<city>][-parallel][-preview]-<timestamp>.mp4`;
-the `sf` and sequential tags are omitted. Existing `--output` files are overwritten.
-The fixed pre-pass normalization is shared with the poster, but **pixel-identical
-final frames are not guaranteed**. See [animation status](docs/animation-status.md)
-for merge-readiness gaps and the validation performed on this branch.
+the `sf` and sequential tags are omitted. Existing `--output` files are replaced
+only after ffmpeg succeeds; failures or cancellation preserve them and remove
+the temporary video.
+
+Each run contributes one visit to every pixel in its scaled route stroke,
+including retraced segments. Different runs add separate visits at overlaps.
+Both modes use that same coverage for fixed pre-pass normalization, so final
+density does not depend on speed or frame rate. Animation omits the poster's
+density-bonus strokes and some effects, so **pixel-identical poster output is
+not guaranteed**. See [animation status](docs/animation-status.md) for validation
+and remaining limits.
 
 ## Garmin Connect instead of Strava
 
@@ -161,7 +172,7 @@ python garmin_fetch.py --since 2026-01-01  # backfill from a particular date
 python render.py                         # render the shared activity cache
 ```
 
-For `render.py --fetch` to use Garmin, set `FETCH_SOURCE = "garmin"` in
+For `render.py --fetch` or `animate.py --fetch` to use Garmin, set `FETCH_SOURCE = "garmin"` in
 `config.py` or your city configuration. The standalone `garmin_fetch.py` always
 uses Garmin regardless of that setting.
 
@@ -222,6 +233,7 @@ them and their backups out of version control and do not share them in logs.
 .venv/bin/pytest tests/ -v
 .venv/bin/pytest tests/test_export.py -v  # real CLI with synthetic data/services
 .venv/bin/pytest tests/test_animator.py -v
+.venv/bin/pytest tests/test_animation_regressions.py -v
 .venv/bin/pytest tests/test_animation_cli.py -v  # real ffmpeg/ffprobe, synthetic data
 ```
 
@@ -229,7 +241,8 @@ Tests run in temporary working/home directories, disable dotenv loading, and
 block unmocked network requests. Token-persistence tests use temporary `.env`
 files, not your real credentials or activity cache.
 The MP4 smoke tests require `ffmpeg` and `ffprobe` on `PATH` and skip when
-either is unavailable. They encode and fully decode both animation modes.
+either is unavailable. They encode and fully decode both animation modes and
+previews, check metadata/frame counts, and exercise encoder failure and cancellation.
 
 ## Adapting for a new city
 
@@ -310,7 +323,7 @@ Animation-specific knobs:
 | `ANIMATION_SPEED_RAMP_RUNS` | Runs over which speed ramps slow → fast (and back) |
 | `ANIMATION_DOT_RADIUS` | Cursor dot size |
 | `ANIMATION_DOT_BLUR` | Sequential cursor halo sigma; parallel tracers are unblurred |
-| `ANIMATION_DOT_BRIGHTNESS` | Sequential cursor brightness; currently not forwarded by the CLI |
+| `ANIMATION_DOT_BRIGHTNESS` | Sequential cursor brightness (2.0 by default) |
 | `ANIMATION_HOLD_SECONDS` | Sequential final hold (3s; disabled in preview) |
 | `ANIMATION_PARALLEL_DURATION_S` | Longest route's drawing duration (15s) |
 | `ANIMATION_PARALLEL_HOLD_S` | Parallel final hold / stats fade (1s, including preview) |
@@ -336,14 +349,13 @@ Ordinary bloom is disabled. `--no-bloom` is an alias for `--no-hot-bloom`;
 
 ### Map attribution
 
-Poster exports with a basemap include the visible credit
-**© OpenStreetMap contributors, © CARTO**, also stored in PNG copyright metadata.
+Poster exports with a basemap and every animation frame include the visible credit
+**© OpenStreetMap contributors, © CARTO**, also stored in PNG/MP4 copyright metadata.
 For existing images made before this credit was added, include it in their
 caption or regenerate them. See [OpenStreetMap copyright](https://www.openstreetmap.org/copyright)
 and [CARTO attribution](https://carto.com/attribution/).
 If you change `MAP_TILE_URL` to another provider, update `MAP_ATTRIBUTION` to
 match that provider's requirements.
 
-MP4 output does **not yet** burn in attribution or set copyright metadata.
-Add the provider credit in the publication caption for existing videos.
-Native video attribution remains a merge-readiness gap, not a completed feature.
+Regenerate older videos that lack embedded attribution, or include the provider
+credit in their publication caption.

@@ -1,8 +1,13 @@
 """Animation pipeline for strava-heatmap-art."""
 import math
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass
+from itertools import accumulate
 
 import cv2
 import numpy as np
@@ -10,44 +15,7 @@ from PIL import Image, ImageDraw
 from scipy.ndimage import gaussian_filter
 
 from src.renderer import _ramp_colors
-from src.typography import _load_font
-
-
-# ── Mileage ───────────────────────────────────────────────────────────────────
-
-_EARTH_RADIUS_M = 6_371_000
-_METERS_PER_MILE = 1609.344
-
-
-def haversine_miles(lat1, lng1, lat2, lng2):
-    """Haversine distance between two (lat, lng) points in miles."""
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lng2 - lng1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return 2 * _EARTH_RADIUS_M * math.asin(math.sqrt(a)) / _METERS_PER_MILE
-
-
-def compute_frame_miles(geo_coords, start_seg, start_t, end_seg, end_t):
-    """Haversine distance (miles) traversed from (start_seg, start_t) to (end_seg, end_t).
-
-    geo_coords: list of (lat, lng) tuples.
-    seg N spans geo_coords[N] → geo_coords[N+1].
-    t ∈ [0, 1] is fractional progress along segment N.
-    """
-    total = 0.0
-    seg = start_seg
-    t0 = start_t
-    while seg <= end_seg:
-        t1 = end_t if seg == end_seg else 1.0
-        lat0 = geo_coords[seg][0] + t0 * (geo_coords[seg + 1][0] - geo_coords[seg][0])
-        lng0 = geo_coords[seg][1] + t0 * (geo_coords[seg + 1][1] - geo_coords[seg][1])
-        lat1 = geo_coords[seg][0] + t1 * (geo_coords[seg + 1][0] - geo_coords[seg][0])
-        lng1 = geo_coords[seg][1] + t1 * (geo_coords[seg + 1][1] - geo_coords[seg][1])
-        total += haversine_miles(lat0, lng0, lat1, lng1)
-        seg += 1
-        t0 = 0.0
-    return total
+from src.typography import _load_font, METERS_PER_MILE
 
 
 # ── Cursor ────────────────────────────────────────────────────────────────────
@@ -65,7 +33,7 @@ def advance_cursor(pixel_coords, seg_idx, t, pixels_budget):
     drawn = []
     n = len(pixel_coords)
 
-    while pixels_budget > 0 and seg_idx < n - 1:
+    while seg_idx < n - 1:
         p0 = pixel_coords[seg_idx]
         p1 = pixel_coords[seg_idx + 1]
         dx = p1[0] - p0[0]
@@ -82,13 +50,18 @@ def advance_cursor(pixel_coords, seg_idx, t, pixels_budget):
                 break
             continue
 
+        if pixels_budget <= 0:
+            break
+
         remaining_px = seg_len * (1.0 - t)
         start_x = p0[0] + t * dx
         start_y = p0[1] + t * dy
 
-        if pixels_budget >= remaining_px:
+        if pixels_budget >= remaining_px or math.isclose(
+            pixels_budget, remaining_px, rel_tol=1e-12, abs_tol=1e-9
+        ):
             # Consume this segment entirely and continue
-            pixels_budget -= remaining_px
+            pixels_budget = max(0.0, pixels_budget - remaining_px)
             end_x, end_y = float(p1[0]), float(p1[1])
             drawn.append(((start_x, start_y), (end_x, end_y)))
             seg_idx += 1
@@ -158,44 +131,18 @@ def canvas_to_rgb(canvas, final_log_max, gamma, color_ramp, bg_color,
 # ── Dot rendering ─────────────────────────────────────────────────────────────
 
 def paint_dot(frame, cx, cy, radius, blur_sigma, brightness=1.0, alpha=1.0):
-    """Paint a white circle onto frame (uint8 HxWx3) at (cx, cy).
-
-    If blur_sigma > 0, apply Gaussian blur to the dot layer before compositing
-    (screen blend) so the dot has a soft halo rather than a hard edge.
-    brightness multiplies the dot layer after blur (>1 saturates the core).
-    alpha scales the final dot layer for fade-out (0.0 = invisible, 1.0 = full).
-    Modifies frame in-place.
-    """
-    if alpha <= 0:
-        return
-    h, w = frame.shape[:2]
-    dot_layer = np.zeros((h, w), dtype=np.float32)
-    cv2.circle(dot_layer, (int(cx), int(cy)), int(radius), color=255.0, thickness=-1)
-
-    if blur_sigma > 0:
-        dot_layer = gaussian_filter(dot_layer, sigma=blur_sigma)
-
-    if brightness != 1.0:
-        dot_layer = np.clip(dot_layer * brightness, 0.0, 255.0)
-
-    if alpha != 1.0:
-        dot_layer = dot_layer * alpha
-
-    for c in range(3):
-        ch = frame[:, :, c].astype(np.float32)
-        # Screen blend: result = 255 - (255 - frame) * (255 - dot) / 255
-        blended = 255 - (255 - ch) * (255 - dot_layer) / 255
-        frame[:, :, c] = np.clip(blended, 0, 255).astype(np.uint8)
+    """Paint one cursor dot, scaling opacity after brightness clipping."""
+    paint_dots_batch(frame, [(cx, cy)], radius, blur_sigma, brightness, alpha)
 
 
-def paint_dots_batch(frame, positions, radius, blur_sigma, brightness=1.0):
+def paint_dots_batch(frame, positions, radius, blur_sigma, brightness=1.0, alpha=1.0):
     """Paint multiple cursor dots in a single blur pass (screen blend).
 
     positions: list of (cx, cy) float tuples.
     All dots are drawn onto one layer, blurred once, then screen-blended onto frame.
     Modifies frame in-place.
     """
-    if not positions:
+    if not positions or alpha <= 0:
         return
     h, w = frame.shape[:2]
     dot_layer = np.zeros((h, w), dtype=np.float32)
@@ -205,6 +152,8 @@ def paint_dots_batch(frame, positions, radius, blur_sigma, brightness=1.0):
         dot_layer = gaussian_filter(dot_layer, sigma=blur_sigma)
     if brightness != 1.0:
         dot_layer = np.clip(dot_layer * brightness, 0.0, 255.0)
+    if alpha != 1.0:
+        dot_layer *= alpha
     for c in range(3):
         ch = frame[:, :, c].astype(np.float32)
         blended = 255 - (255 - ch) * (255 - dot_layer) / 255
@@ -214,7 +163,7 @@ def paint_dots_batch(frame, positions, radius, blur_sigma, brightness=1.0):
 # ── Typography ────────────────────────────────────────────────────────────────
 
 def render_animation_typography(img, month_year, run_count, total_miles_floor,
-                                 font_path, scale=1.0):
+                                 font_path, scale=1.0, font=None):
     """Render live animation stats onto img (PIL Image) in the same bottom-right
     position as render_typography.
 
@@ -232,7 +181,8 @@ def render_animation_typography(img, month_year, run_count, total_miles_floor,
     line_gap = int(max(8, h // 120) * scale)
 
     draw = ImageDraw.Draw(img)
-    font = _load_font(font_path, font_size)
+    if font is None:
+        font = _load_font(font_path, font_size)
     shadow = (0, 0, 0)
     text_color = (255, 255, 255)
 
@@ -273,6 +223,7 @@ def open_ffmpeg_pipe(output_path, width, height, fps):
     Returns the Popen object. Write frames as raw bytes to proc.stdin.
     Call proc.stdin.close() and proc.wait() when done.
     """
+    from config import MAP_ATTRIBUTION
     cmd = [
         "ffmpeg", "-y",
         "-f", "rawvideo",
@@ -284,6 +235,7 @@ def open_ffmpeg_pipe(output_path, width, height, fps):
         "-vcodec", "libx264",
         "-pix_fmt", "yuv420p",
         "-crf", "18",
+        "-metadata", f"copyright={MAP_ATTRIBUTION}",
         output_path,
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
@@ -305,17 +257,6 @@ def _path_length_px(pixel_coords):
             pixel_coords[i + 1][1] - pixel_coords[i][1],
         )
     return total
-
-
-def compute_total_frames(runs, renderer, drawing_speed):
-    """Estimate total animation frames (excluding hold) for all runs."""
-    total_px = 0.0
-    for run in runs:
-        if len(run["coords"]) < 2:
-            continue
-        px_coords = build_run_pixel_coords(run, renderer)
-        total_px += _path_length_px(px_coords)
-    return int(total_px / drawing_speed) if drawing_speed > 0 else 0
 
 
 def _get_run_speed(run_idx, n_runs, fast_speed, slow_speed, ramp_runs):
@@ -350,434 +291,406 @@ def _format_year(start_date):
     return start_date[:4]
 
 
-def run_animation(runs, output_path, config):
-    """Run the full animation pipeline.
+def validate_animation_config(config, mode="sequential"):
+    """Reject settings that can stall traversal or produce invalid raw video."""
+    from numbers import Integral, Real
+    import config as style
 
-    Args:
-        runs:        list of run dicts from decode_runs()
-        output_path: path to write the MP4
-        config:      module/object with animation config knobs
-    """
-    from src.renderer import StravaRenderer
-    from src.tiles import fetch_map_tile
-    from src.typography import render_legend, _download_font
-    from PIL import ImageEnhance
-    from config import (
-        ROUTE_COLOR_RAMP, BG_COLOR, GAMMA,
-        ROUTE_LINE_THICKNESS,
-        DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_POWER, DENSITY_EXPAND_STRENGTH,
-        HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
-        MAP_TILE_URL, MAP_TILE_CACHE, MAP_TILE_OPACITY, MAP_TILE_BRIGHTNESS,
-        MAP_FONT_PATH, MAP_FONT_URL,
-        CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, TYPOGRAPHY_SCALE, LEGEND_POSITION, LEGEND_WIDTH_SCALE,
-        TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION, LEGEND_Y_OFFSET,
-        CANVAS_ROTATION_DEGREES,
-    )
+    def number(name, *, positive=False, integer=False):
+        value = getattr(config, name, None)
+        kind = Integral if integer else Real
+        if (isinstance(value, bool) or not isinstance(value, kind)
+                or not math.isfinite(value) or (value <= 0 if positive else value < 0)):
+            constraint = "positive" if positive else "nonnegative"
+            unit = "integer" if integer else "finite number"
+            raise ValueError(f"{name} must be a {constraint} {unit}.")
+        return value
 
-    fps = config.ANIMATION_FPS
-    drawing_speed = config.ANIMATION_DRAWING_SPEED
-    slow_speed = getattr(config, "ANIMATION_DRAWING_SPEED_SLOW", drawing_speed)
-    ramp_runs = getattr(config, "ANIMATION_SPEED_RAMP_RUNS", 0)
-    dot_radius = config.ANIMATION_DOT_RADIUS
-    dot_blur = config.ANIMATION_DOT_BLUR
-    dot_brightness = getattr(config, "ANIMATION_DOT_BRIGHTNESS", 1.0)
-    hold_seconds = config.ANIMATION_HOLD_SECONDS
-    out_w, out_h = config.ANIMATION_OUTPUT_RESOLUTION
+    fps = number("ANIMATION_FPS", positive=True)
 
-    # Guard: rotation not supported
-    if CANVAS_ROTATION_DEGREES != 0:
-        sys.exit(
-            f"ERROR: animate.py does not support CANVAS_ROTATION_DEGREES={CANVAS_ROTATION_DEGREES}. "
-            "Add CANVAS_ROTATION_DEGREES = 0 to your city config override."
+    def check_frames(name, seconds, *, positive=False):
+        frames = seconds * fps
+        if not math.isfinite(frames) or (positive and int(frames) < 1):
+            raise ValueError(f"{name} * ANIMATION_FPS must yield "
+                             f"{'at least one' if positive else 'a finite number of'} frames.")
+
+    size = getattr(config, "ANIMATION_OUTPUT_RESOLUTION", None)
+    if (not isinstance(size, (tuple, list)) or len(size) != 2
+            or any(isinstance(n, bool) or not isinstance(n, Integral)
+                   or n <= 0 or n % 2 for n in size)):
+        raise ValueError("ANIMATION_OUTPUT_RESOLUTION must contain two positive even integers.")
+    number("ANIMATION_DOT_RADIUS", integer=True)
+    number("ANIMATION_DOT_BLUR")
+    number("ANIMATION_DOT_BRIGHTNESS")
+    if mode == "sequential":
+        number("ANIMATION_DRAWING_SPEED", positive=True)
+        number("ANIMATION_DRAWING_SPEED_SLOW", positive=True)
+        number("ANIMATION_SPEED_RAMP_RUNS", integer=True)
+        check_frames("ANIMATION_HOLD_SECONDS", number("ANIMATION_HOLD_SECONDS"))
+    else:
+        duration = number("ANIMATION_PARALLEL_DURATION_S", positive=True)
+        check_frames("ANIMATION_PARALLEL_HOLD_S", number("ANIMATION_PARALLEL_HOLD_S"))
+        check_frames("ANIMATION_PARALLEL_DURATION_S", duration, positive=True)
+    if style.CANVAS_ROTATION_DEGREES != 0:
+        raise ValueError(
+            f"Animation does not support CANVAS_ROTATION_DEGREES={style.CANVAS_ROTATION_DEGREES}. "
+            "Use a north-up city config with CANVAS_ROTATION_DEGREES = 0."
         )
 
-    # Guard: ffmpeg
-    check_ffmpeg()
 
-    # Sort runs chronologically
-    runs = sorted(runs, key=lambda r: r["start_date"])
-
-    # ── Pre-pass ──────────────────────────────────────────────────────────────
-    print("Pre-pass: rasterizing all runs to compute normalization anchor...")
-    pre_renderer = StravaRenderer(width=out_w, height=out_h)
-    pre_renderer.rasterize_all(runs)
-    final_canvas_max = float(pre_renderer.canvas.max())
-    final_log_max = float(np.log1p(pre_renderer.canvas).max())
-    if final_log_max == 0:
-        sys.exit("ERROR: No qualifying runs found after filtering. Nothing to animate.")
-    del pre_renderer
-
-    # ── Duration estimate ─────────────────────────────────────────────────────
-    anim_renderer = StravaRenderer(width=out_w, height=out_h)
-    total_frames = compute_total_frames(runs, anim_renderer, drawing_speed)
-    hold_frames = int(hold_seconds * fps)
-    total_duration_s = (total_frames + hold_frames) / fps
-    print(f"Expected duration: {total_duration_s:.0f}s ({total_frames} frames at {fps}fps). "
-          f"Adjust ANIMATION_DRAWING_SPEED to change.")
-
-    # ── Map tile ──────────────────────────────────────────────────────────────
-    print("Fetching map tile...")
-    _download_font(MAP_FONT_PATH, MAP_FONT_URL)
-    cache_path = MAP_TILE_CACHE.replace(".png", "-anim.png")
-    tile = fetch_map_tile(
-        bounds=anim_renderer.bounds,
-        zoom=15,
-        cache_path=cache_path,
-        target_size=(out_w, out_h),
-        url_template=MAP_TILE_URL,
-    )
-    if MAP_TILE_BRIGHTNESS != 1.0:
-        tile = ImageEnhance.Brightness(tile).enhance(MAP_TILE_BRIGHTNESS)
-    map_arr = np.array(tile.resize((out_w, out_h)), dtype=np.float32)
-
-    # ── Pre-render legend ─────────────────────────────────────────────────────
-    # Scale effects to animation canvas size (relative to print canvas)
-    px_scale = out_w / CANVAS_WIDTH_PX
-    line_thickness = max(1, round(ROUTE_LINE_THICKNESS * px_scale))
-    de_sigma = max(0.5, DENSITY_EXPAND_SIGMA * px_scale)
-    hb_sigma = 16.0 * HOT_BLOOM_SIGMA_MULT * px_scale  # 16.0 = bloom_sigma_wide default
-
-    legend_base = Image.new("RGB", (out_w, out_h), (0, 0, 0))
-    legend_img = render_legend(
-        legend_base, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
-        gamma=GAMMA, canvas_max_val=final_canvas_max,
-        scale=TYPOGRAPHY_SCALE, position=LEGEND_POSITION,
-        width_scale=LEGEND_WIDTH_SCALE,
-        text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
-        show_elevation=SHOW_ELEVATION,
-        y_offset=LEGEND_Y_OFFSET,
-    )
-    legend_arr = np.array(legend_img, dtype=np.float32)
-
-    # ── Animation pass ────────────────────────────────────────────────────────
-    print(f"Rendering {len(runs)} runs → {output_path}")
-    proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps)
-    accumulation = anim_renderer.canvas  # float32, starts at zero
-
-    total_miles = 0.0
-    run_count = 0
-    frame_count = 0
-    last_tip = None       # cursor position at end of final drawing frame
-    last_month_year = ""  # for fade / hold frame typography
-    decel_zone_px = out_w // 4  # pixels over which final run decelerates to ~1 px/frame
-    fade_frames = fps // 2      # dot fade-out duration (0.5 s)
-
-    def _build_frame(month_year_str):
-        """Composite the current accumulation state into a uint8 RGB frame."""
-        f = canvas_to_rgb(
-            accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR,
-            density_expand_sigma=de_sigma,
-            density_expand_power=DENSITY_EXPAND_POWER,
-            density_expand_strength=DENSITY_EXPAND_STRENGTH,
-            hot_bloom_sigma=hb_sigma,
-            hot_bloom_threshold=HOT_BLOOM_THRESHOLD,
-            hot_bloom_strength=HOT_BLOOM_STRENGTH,
-        )
-        f_f = f.astype(np.float32)
-        bg_f = np.zeros_like(f_f)
-        for c in range(3):
-            bg_f[:, :, c] = map_arr[:, :, c] * MAP_TILE_OPACITY
-        result = 255 - (255 - bg_f) * (255 - f_f) / 255
-        f = np.clip(result, 0, 255).astype(np.uint8)
-        f_f2 = f.astype(np.float32)
-        result2 = 255 - (255 - f_f2) * (255 - legend_arr) / 255
-        f = np.clip(result2, 0, 255).astype(np.uint8)
-        pil_f = Image.fromarray(f, mode="RGB")
-        pil_f = render_animation_typography(
-            pil_f, month_year_str, run_count, int(math.floor(total_miles)),
-            MAP_FONT_PATH, scale=TYPOGRAPHY_SCALE,
-        )
-        return np.array(pil_f)
-
+def _wait_encoder(proc, timeout):
     try:
-        # ── Blank opening frame (0 runs, 0 miles, nothing drawn) ──────────────
-        first_month_year = _format_month_year(runs[0]["start_date"]) if runs else ""
-        opening = _build_frame(first_month_year)
-        proc.stdin.write(opening.tobytes())
-        frame_count += 1
-
-        for run_idx, run in enumerate(runs):
-            geo_coords = run["coords"]
-            if len(geo_coords) < 2:
-                run_count += 1
-                continue
-
-            px_coords = build_run_pixel_coords(run, anim_renderer)
-            run_count += 1
-            month_year = _format_month_year(run["start_date"])
-            last_month_year = month_year
-            run_speed = _get_run_speed(run_idx, len(runs), drawing_speed, slow_speed, ramp_runs)
-
-            is_last_run = (run_idx == len(runs) - 1)
-            run_total_px = _path_length_px(px_coords) if is_last_run else 0.0
-            px_drawn_this_run = 0.0
-
-            seg_idx, t = 0, 0.0
-
-            while True:
-                # Last run: decelerate linearly to 1 px/frame over the final decel_zone_px
-                if is_last_run and run_total_px > 0:
-                    px_remaining = run_total_px - px_drawn_this_run
-                    if px_remaining < decel_zone_px:
-                        frame_speed = max(1.0, run_speed * px_remaining / decel_zone_px)
-                    else:
-                        frame_speed = run_speed
-                else:
-                    frame_speed = run_speed
-
-                new_seg, new_t, drawn = advance_cursor(px_coords, seg_idx, t, frame_speed)
-
-                # Track pixels drawn (for decel calculation on last run)
-                if is_last_run and drawn:
-                    for (x0, y0), (x1, y1) in drawn:
-                        px_drawn_this_run += math.hypot(x1 - x0, y1 - y0)
-
-                # Draw segments onto accumulation canvas
-                buf = np.zeros((out_h, out_w), dtype=np.float32)
-                for (x0, y0), (x1, y1) in drawn:
-                    cv2.line(buf, (int(x0), int(y0)), (int(x1), int(y1)),
-                             color=1.0, thickness=line_thickness, lineType=cv2.LINE_AA)
-                accumulation += buf
-
-                # Mileage for this frame
-                if drawn:
-                    frame_miles = compute_frame_miles(geo_coords, seg_idx, t, new_seg, new_t)
-                    total_miles += frame_miles
-
-                # Build output frame
-                frame_rgb = _build_frame(month_year)
-
-                # Paint cursor dot at tip
-                if drawn:
-                    tip_x, tip_y = drawn[-1][1]
-                    last_tip = (tip_x, tip_y)
-                    paint_dot(frame_rgb, tip_x, tip_y, dot_radius, dot_blur, dot_brightness)
-
-                # Write frame
-                proc.stdin.write(frame_rgb.tobytes())
-                frame_count += 1
-
-                seg_idx, t = new_seg, new_t
-                if seg_idx >= len(px_coords) - 2 and t >= 1.0:
-                    break
-
-        # Dot fade-out: render the completed canvas with dot fading to invisible
-        if last_tip is not None and fade_frames > 0:
-            lx, ly = last_tip
-            for i in range(fade_frames):
-                alpha = 1.0 - (i + 1) / fade_frames
-                frame_rgb = _build_frame(last_month_year)
-                paint_dot(frame_rgb, lx, ly, dot_radius, dot_blur, dot_brightness, alpha=alpha)
-                proc.stdin.write(frame_rgb.tobytes())
-                frame_count += 1
-
-        # Hold frames — rebuild final frame without dot
-        if hold_frames > 0:
-            print(f"Writing {hold_frames} hold frames...")
-            last_month_year = _format_month_year(runs[-1]["start_date"]) if runs else ""
-            hold_frame = _build_frame(last_month_year)
-            hold_bytes = hold_frame.tobytes()
-            for _ in range(hold_frames):
-                proc.stdin.write(hold_bytes)
-
-    finally:
-        proc.stdin.close()
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
         proc.wait()
+        raise RuntimeError("ffmpeg did not finish; encoding was stopped.")
 
-    print(f"Done. {frame_count + hold_frames} frames → {output_path}")
+
+@contextmanager
+def _video_pipe(output_path, width, height, fps):
+    """Reap the encoder on every exit and replace output only after success."""
+    output_path = os.path.abspath(output_path)
+    parent = os.path.dirname(output_path)
+    os.makedirs(parent, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".animation-", suffix=".mp4", dir=parent)
+    os.close(fd)
+    try:
+        proc = open_ffmpeg_pipe(temporary, width, height, fps)
+        try:
+            yield proc.stdin
+            close_error = None
+            try:
+                proc.stdin.close()
+            except OSError as exc:
+                close_error = exc
+            status = _wait_encoder(proc, 30)
+            if status != 0 or close_error is not None:
+                raise RuntimeError(f"ffmpeg failed (exit status {status}).") from close_error
+            if os.path.getsize(temporary) == 0:
+                raise RuntimeError("ffmpeg produced no video.")
+            os.replace(temporary, output_path)
+        except BaseException:
+            # This also covers cancellation while closing/flushing or waiting.
+            with suppress(OSError):
+                proc.terminate()
+            try:
+                with suppress(OSError):
+                    proc.stdin.close()
+            finally:
+                try:
+                    _wait_encoder(proc, 5)
+                except RuntimeError:
+                    pass
+            raise
+    finally:
+        with suppress(FileNotFoundError):
+            os.unlink(temporary)
 
 
-# ── Parallel animation ────────────────────────────────────────────────────────
+@dataclass
+class _RoutePixels:
+    """Sparse, distance-ordered pixels, each contributed once by this run."""
+    indices: np.ndarray
+    distances: np.ndarray
+    revealed: int = 0
 
-def run_parallel_animation(runs, output_path, config):
-    """Run parallel animation: all runs draw simultaneously.
-
-    Each run's speed is normalized so the longest run finishes at
-    ANIMATION_PARALLEL_DURATION_S. Shorter runs finish proportionally earlier.
-    Small tracer dots mark active routes. Stats fade in during the hold frames.
-    """
-    from src.renderer import StravaRenderer
-    from src.tiles import fetch_map_tile
-    from src.typography import render_legend, _download_font
-    from PIL import ImageEnhance
-    from config import (
-        ROUTE_COLOR_RAMP, BG_COLOR, GAMMA,
-        ROUTE_LINE_THICKNESS,
-        DENSITY_EXPAND_SIGMA, DENSITY_EXPAND_POWER, DENSITY_EXPAND_STRENGTH,
-        HOT_BLOOM_THRESHOLD, HOT_BLOOM_SIGMA_MULT, HOT_BLOOM_STRENGTH,
-        MAP_TILE_URL, MAP_TILE_CACHE, MAP_TILE_OPACITY, MAP_TILE_BRIGHTNESS,
-        MAP_FONT_PATH, MAP_FONT_URL,
-        CANVAS_WIDTH_PX, TYPOGRAPHY_SCALE, LEGEND_POSITION, LEGEND_WIDTH_SCALE,
-        TYPOGRAPHY_WIDTH_SCALE, SHOW_ELEVATION, LEGEND_Y_OFFSET,
-        CANVAS_ROTATION_DEGREES,
-    )
-
-    fps = config.ANIMATION_FPS
-    duration_s = getattr(config, "ANIMATION_PARALLEL_DURATION_S", 15)
-    hold_s = getattr(config, "ANIMATION_PARALLEL_HOLD_S", 1)
-    out_w, out_h = config.ANIMATION_OUTPUT_RESOLUTION
-
-    drawing_frames = int(duration_s * fps)
-    hold_frames = int(hold_s * fps)
-
-    if CANVAS_ROTATION_DEGREES != 0:
-        sys.exit(
-            f"ERROR: parallel animation does not support CANVAS_ROTATION_DEGREES={CANVAS_ROTATION_DEGREES}."
+    def reveal(self, canvas, distance, complete=False):
+        end = len(self.indices) if complete else int(
+            np.searchsorted(self.distances, distance, side="right")
         )
+        end = max(self.revealed, end)
+        canvas.ravel()[self.indices[self.revealed:end]] += 1.0
+        self.revealed = end
 
-    check_ffmpeg()
 
-    runs = sorted(runs, key=lambda r: r["start_date"])
+def _rasterize_route(points, width, height, thickness):
+    """Rasterize full segments once, then order their union by first arrival.
 
-    # ── Pre-pass ──────────────────────────────────────────────────────────────
-    print("Pre-pass: rasterizing all runs to compute normalization anchor...")
-    pre_renderer = StravaRenderer(width=out_w, height=out_h)
-    pre_renderer.rasterize_all(runs)
-    final_canvas_max = float(pre_renderer.canvas.max())
-    final_log_max = float(np.log1p(pre_renderer.canvas).max())
-    if final_log_max == 0:
-        sys.exit("ERROR: No qualifying runs found after filtering. Nothing to animate.")
-    del pre_renderer
+    The canonical mask is the union of OpenCV LINE_8 strokes at animation
+    thickness, with no poster bonus pass. Retracing never adds a second visit.
+    Temporary masks are bounded to the visible route/segment, not one full
+    float canvas per active run.
+    """
+    if len(points) < 2:
+        return _RoutePixels(np.array([], dtype=np.intp), np.array([], dtype=np.float64))
+    pad = thickness // 2 + 2
+    x0 = max(0, min(p[0] for p in points) - pad)
+    y0 = max(0, min(p[1] for p in points) - pad)
+    x1 = min(width, max(p[0] for p in points) + pad + 1)
+    y1 = min(height, max(p[1] for p in points) + pad + 1)
+    if x1 <= x0 or y1 <= y0:
+        return _RoutePixels(np.array([], dtype=np.intp), np.array([], dtype=np.float64))
+    arrival = np.full((y1 - y0, x1 - x0), np.inf, dtype=np.float64)
+    distance = 0.0
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        length = math.hypot(bx - ax, by - ay)
+        left, top = max(x0, min(ax, bx) - pad), max(y0, min(ay, by) - pad)
+        right, bottom = min(x1, max(ax, bx) + pad + 1), min(y1, max(ay, by) + pad + 1)
+        if right > left and bottom > top:
+            mask = np.zeros((bottom - top, right - left), dtype=np.uint8)
+            cv2.line(mask, (ax - left, ay - top), (bx - left, by - top),
+                     1, thickness=thickness, lineType=cv2.LINE_8)
+            yy, xx = np.nonzero(mask)
+            if length:
+                fraction = np.clip(
+                    ((xx + left - ax) * (bx - ax) + (yy + top - ay) * (by - ay))
+                    / length ** 2, 0.0, 1.0,
+                )
+                times = distance + fraction * length
+            else:
+                times = np.full(len(xx), distance)
+            ry, rx = yy + top - y0, xx + left - x0
+            arrival[ry, rx] = np.minimum(arrival[ry, rx], times)
+        distance += length
+    yy, xx = np.nonzero(np.isfinite(arrival))
+    times = arrival[yy, xx]
+    order = np.argsort(times, kind="stable")
+    indices = (yy + y0) * width + xx + x0
+    return _RoutePixels(indices[order], times[order])
 
-    # ── Build pixel coords + path lengths ─────────────────────────────────────
-    anim_renderer = StravaRenderer(width=out_w, height=out_h)
-    px_scale = out_w / CANVAS_WIDTH_PX
-    line_thickness = max(1, round(ROUTE_LINE_THICKNESS * px_scale))
-    de_sigma = max(0.5, DENSITY_EXPAND_SIGMA * px_scale)
-    hb_sigma = 16.0 * HOT_BLOOM_SIGMA_MULT * px_scale
 
-    valid_runs = []
-    for run in runs:
-        if len(run["coords"]) < 2:
-            continue
-        px_coords = build_run_pixel_coords(run, anim_renderer)
-        length = _path_length_px(px_coords)
-        if length > 0:
-            valid_runs.append({"run": run, "px_coords": px_coords, "length": length})
+def _sequential_steps(points, speed, is_last, decel_zone):
+    """The shared traversal schedule used for both counting and rendering."""
+    lengths = [math.dist(a, b) for a, b in zip(points, points[1:])]
+    prefix = np.concatenate(([0.0], np.cumsum(lengths)))
+    total = float(prefix[-1])
+    seg, t, progress = 0, 0.0, 0.0
+    while True:
+        budget = speed
+        remaining = max(0.0, total - progress)
+        if is_last and 0 < remaining < decel_zone:
+            budget = max(1.0, speed * remaining / decel_zone)
+        new_seg, new_t, _ = advance_cursor(points, seg, t, budget)
+        progress = float(prefix[new_seg] + new_t * lengths[new_seg])
+        done = new_seg == len(points) - 2 and new_t == 1.0
+        a, b = points[new_seg:new_seg + 2]
+        tip = (a[0] + new_t * (b[0] - a[0]), a[1] + new_t * (b[1] - a[1]))
+        yield progress, done, tip
+        if done:
+            return
+        seg, t = new_seg, new_t
 
-    if not valid_runs:
-        sys.exit("ERROR: No valid runs with drawable coordinates.")
 
-    max_length = max(r["length"] for r in valid_runs)
-    speed = max_length / drawing_frames  # px/frame — identical for all runs
+class _AnimationScene:
+    """Shared projection, normalization, basemap, effects, and frame credits."""
 
-    # ── Stats for typography ──────────────────────────────────────────────────
-    total_miles = sum(
-        r["run"].get("distance", 0.0) / _METERS_PER_MILE for r in valid_runs
-    )
-    first_year = _format_year(valid_runs[0]["run"]["start_date"])
-    last_year = _format_year(valid_runs[-1]["run"]["start_date"])
-    date_range_str = f"{first_year} – {last_year}"
+    def __init__(self, runs, config, mode):
+        from PIL import ImageEnhance
+        from src.renderer import StravaRenderer
+        from src.tiles import fetch_map_tile
+        from src.typography import render_legend, render_attribution, _download_font
+        import config as style
 
-    print(
-        f"Parallel animation: {len(valid_runs)} runs, {drawing_frames} frames "
-        f"({duration_s}s at {fps}fps) + {hold_frames} hold frames"
-    )
+        validate_animation_config(config, mode)
+        check_ffmpeg()
+        self.style = style
+        self.width, self.height = config.ANIMATION_OUTPUT_RESOLUTION
+        self.runs = sorted(runs, key=lambda run: run["start_date"])
+        # Both modes count the same activities, even when a route cannot draw.
+        self.mile_totals = [
+            meters / METERS_PER_MILE for meters in
+            accumulate((run.get("distance", 0.0) for run in self.runs), initial=0.0)
+        ]
+        self.renderer = StravaRenderer(width=self.width, height=self.height)
+        if (self.renderer.width, self.renderer.height) != (self.width, self.height):
+            raise ValueError("Animation does not support an intermediate canvas differing from its output size.")
+        self.canvas = self.renderer.canvas
+        self.scale = self.width / style.CANVAS_WIDTH_PX
+        thickness = max(1, round(style.ROUTE_LINE_THICKNESS * self.scale))
+        self.routes = []
+        print("Pre-pass: rasterizing animation coverage and normalization...")
+        for index, run in enumerate(self.runs):
+            if len(run["coords"]) < 2:
+                continue
+            points = build_run_pixel_coords(run, self.renderer)
+            pixels = _rasterize_route(points, self.width, self.height, thickness)
+            self.canvas.ravel()[pixels.indices] += 1.0
+            self.routes.append({
+                "index": index, "run": run, "points": points, "pixels": pixels,
+                "length": _path_length_px(points),
+            })
+        self.final_max = float(self.canvas.max())
+        self.log_max = float(np.log1p(self.final_max))
+        if not self.final_max:
+            raise ValueError("No qualifying runs have drawable coordinates. Check CITY_BOUNDS or run with --fetch.")
+        self.canvas.fill(0)
 
-    # ── Map tile ──────────────────────────────────────────────────────────────
-    print("Fetching map tile...")
-    _download_font(MAP_FONT_PATH, MAP_FONT_URL)
-    cache_path = MAP_TILE_CACHE.replace(".png", "-anim-parallel.png")
-    tile = fetch_map_tile(
-        bounds=anim_renderer.bounds,
-        zoom=15,
-        cache_path=cache_path,
-        target_size=(out_w, out_h),
-        url_template=MAP_TILE_URL,
-    )
-    if MAP_TILE_BRIGHTNESS != 1.0:
-        tile = ImageEnhance.Brightness(tile).enhance(MAP_TILE_BRIGHTNESS)
-    map_arr = np.array(tile.resize((out_w, out_h)), dtype=np.float32)
+        print("Fetching map tile...")
+        _download_font(style.MAP_FONT_PATH, style.MAP_FONT_URL)
+        self.stats_font = _load_font(
+            style.MAP_FONT_PATH, int(max(10, self.height // 40) * style.TYPOGRAPHY_SCALE),
+        )
+        tile = fetch_map_tile(
+            bounds=self.renderer.bounds, zoom=15, cache_path=style.MAP_TILE_CACHE,
+            target_size=(self.width, self.height), url_template=style.MAP_TILE_URL,
+        ).convert("RGB")
+        if style.MAP_TILE_BRIGHTNESS != 1.0:
+            tile = ImageEnhance.Brightness(tile).enhance(style.MAP_TILE_BRIGHTNESS)
+        self.map = np.asarray(tile.resize((self.width, self.height)), dtype=np.float32)
+        self.map *= style.MAP_TILE_OPACITY
+        self.legend = np.asarray(render_legend(
+            Image.new("RGB", (self.width, self.height)), color_ramp=style.ROUTE_COLOR_RAMP,
+            font_path=style.MAP_FONT_PATH, gamma=style.GAMMA, canvas_max_val=self.final_max,
+            scale=style.TYPOGRAPHY_SCALE, position=style.LEGEND_POSITION,
+            width_scale=style.LEGEND_WIDTH_SCALE, text_width_scale=style.TYPOGRAPHY_WIDTH_SCALE,
+            show_elevation=style.SHOW_ELEVATION, y_offset=style.LEGEND_Y_OFFSET,
+        ), dtype=np.float32)
+        credits = render_attribution(
+            Image.new("RGBA", (self.width, self.height)), style.MAP_ATTRIBUTION,
+            style.MAP_FONT_PATH,
+        )
+        self.credit_bounds = credits.getbbox()
+        if self.credit_bounds:
+            credit = np.asarray(credits.crop(self.credit_bounds))
+            self.credit_rgb = credit[:, :, :3].astype(np.float32)
+            self.credit_alpha = credit[:, :, 3:4].astype(np.float32) / 255.0
 
-    # ── Pre-render legend ─────────────────────────────────────────────────────
-    legend_base = Image.new("RGB", (out_w, out_h), (0, 0, 0))
-    legend_img = render_legend(
-        legend_base, color_ramp=ROUTE_COLOR_RAMP, font_path=MAP_FONT_PATH,
-        gamma=GAMMA, canvas_max_val=final_canvas_max,
-        scale=TYPOGRAPHY_SCALE, position=LEGEND_POSITION,
-        width_scale=LEGEND_WIDTH_SCALE,
-        text_width_scale=TYPOGRAPHY_WIDTH_SCALE,
-        show_elevation=SHOW_ELEVATION,
-        y_offset=LEGEND_Y_OFFSET,
-    )
-    legend_arr = np.array(legend_img, dtype=np.float32)
-
-    accumulation = anim_renderer.canvas  # float32, starts at zero
-
-    def _build_frame():
+    def frame(self):
+        s = self.style
         arr = canvas_to_rgb(
-            accumulation, final_log_max, GAMMA, ROUTE_COLOR_RAMP, BG_COLOR,
-            density_expand_sigma=de_sigma,
-            density_expand_power=DENSITY_EXPAND_POWER,
-            density_expand_strength=DENSITY_EXPAND_STRENGTH,
-            hot_bloom_sigma=hb_sigma,
-            hot_bloom_threshold=HOT_BLOOM_THRESHOLD,
-            hot_bloom_strength=HOT_BLOOM_STRENGTH,
+            self.canvas, self.log_max, s.GAMMA, s.ROUTE_COLOR_RAMP, s.BG_COLOR,
+            density_expand_sigma=max(0.5, s.DENSITY_EXPAND_SIGMA * self.scale),
+            density_expand_power=s.DENSITY_EXPAND_POWER,
+            density_expand_strength=s.DENSITY_EXPAND_STRENGTH,
+            hot_bloom_sigma=16.0 * s.HOT_BLOOM_SIGMA_MULT * self.scale,
+            hot_bloom_threshold=s.HOT_BLOOM_THRESHOLD, hot_bloom_strength=s.HOT_BLOOM_STRENGTH,
         ).astype(np.float32)
-        arr = 255 - (255 - map_arr) * (255 - arr) / 255
-        arr = 255 - (255 - arr) * (255 - legend_arr) / 255
+        arr = 255 - (255 - self.map) * (255 - arr) / 255
+        arr = 255 - (255 - arr) * (255 - self.legend) / 255
         return np.clip(arr, 0, 255).astype(np.uint8)
 
-    # ── Cursor states ─────────────────────────────────────────────────────────
-    cursor_states = [{"seg": 0, "t": 0.0, "done": False} for _ in valid_runs]
-    tracer_radius = max(1, config.ANIMATION_DOT_RADIUS // 2)
-    tracer_blur = 0  # hard-edged dot, no halo
+    def stats(self, frame, date, count, miles):
+        return np.array(render_animation_typography(
+            Image.fromarray(frame), date, count, int(math.floor(miles)),
+            self.style.MAP_FONT_PATH, scale=self.style.TYPOGRAPHY_SCALE, font=self.stats_font,
+        ))
 
-    # ── Animation pass ────────────────────────────────────────────────────────
-    print(f"Rendering {len(valid_runs)} runs in parallel → {output_path}")
-    proc = open_ffmpeg_pipe(output_path, out_w, out_h, fps)
+    def write(self, pipe, frame):
+        # Credits go on last, including opening, dot, fade, and hold frames.
+        if self.credit_bounds:
+            x0, y0, x1, y1 = self.credit_bounds
+            roi = frame[y0:y1, x0:x1]
+            roi[:] = np.rint(self.credit_rgb * self.credit_alpha + roi * (1 - self.credit_alpha))
+        pipe.write(frame.tobytes())
 
-    try:
-        # Blank opening frame — just the map, no routes drawn yet
-        proc.stdin.write(_build_frame().tobytes())
 
-        for _ in range(drawing_frames):
-            buf = np.zeros((out_h, out_w), dtype=np.float32)
-            tips = []
+def run_animation(runs, output_path, config):
+    """Draw runs chronologically, contributing each run's covered pixels once."""
+    scene = _AnimationScene(runs, config, "sequential")
+    fps = config.ANIMATION_FPS
+    fast = config.ANIMATION_DRAWING_SPEED
+    slow = config.ANIMATION_DRAWING_SPEED_SLOW
+    ramp = config.ANIMATION_SPEED_RAMP_RUNS
+    hold_frames = int(config.ANIMATION_HOLD_SECONDS * fps)
+    fade_frames = int(fps / 2)
+    dot_brightness = config.ANIMATION_DOT_BRIGHTNESS
+    decel_zone = max(1, scene.width // 4)
 
-            for i, state in enumerate(cursor_states):
-                if state["done"]:
-                    continue
-                px_coords = valid_runs[i]["px_coords"]
-                new_seg, new_t, drawn = advance_cursor(
-                    px_coords, state["seg"], state["t"], speed
-                )
-                for (x0, y0), (x1, y1) in drawn:
-                    cv2.line(
-                        buf, (int(x0), int(y0)), (int(x1), int(y1)),
-                        color=1.0, thickness=line_thickness, lineType=cv2.LINE_AA,
+    def steps(route):
+        index = route["index"]
+        speed = _get_run_speed(index, len(scene.runs), fast, slow, ramp)
+        return _sequential_steps(route["points"], speed, index == len(scene.runs) - 1, decel_zone)
+
+    drawing_frames = sum(sum(1 for _ in steps(route)) for route in scene.routes)
+    # Ensure trailing activities without drawable routes reach the final stats.
+    final_stats_frame = not (fade_frames or hold_frames) and (
+        scene.routes[-1]["index"] != len(scene.runs) - 1
+    )
+    total_frames = 1 + drawing_frames + fade_frames + hold_frames + final_stats_frame
+    print(f"Expected duration: {total_frames / fps:.2f}s ({total_frames} frames at {fps}fps).")
+    print(f"Rendering {len(scene.runs)} runs → {output_path}")
+    miles, count, frame_count = 0.0, 0, 0
+    month = _format_month_year(scene.runs[0]["start_date"])
+    last_tip = None
+    by_index = {route["index"]: route for route in scene.routes}
+    with _video_pipe(output_path, scene.width, scene.height, fps) as pipe:
+        scene.write(pipe, scene.stats(scene.frame(), month, 0, 0))
+        frame_count += 1
+        for index, run in enumerate(scene.runs):
+            count += 1
+            month = _format_month_year(run["start_date"])
+            route = by_index.get(index)
+            if route is None:
+                continue
+            for progress, done, tip in steps(route):
+                route["pixels"].reveal(scene.canvas, progress, complete=done)
+                if done:
+                    miles = scene.mile_totals[index + 1]
+                else:
+                    fraction = min(1.0, max(0.0, progress / route["length"]))
+                    miles = scene.mile_totals[index] + fraction * (
+                        scene.mile_totals[index + 1] - scene.mile_totals[index]
                     )
+                frame = scene.stats(scene.frame(), month, count, miles)
+                paint_dot(frame, *tip, config.ANIMATION_DOT_RADIUS,
+                          config.ANIMATION_DOT_BLUR, dot_brightness)
+                scene.write(pipe, frame)
+                frame_count += 1
+                last_tip = tip
+        completed_frame = None
+        if fade_frames or hold_frames or final_stats_frame:
+            completed_frame = scene.stats(scene.frame(), month, count, scene.mile_totals[-1])
+        for i in range(fade_frames):
+            frame = completed_frame.copy()
+            paint_dot(frame, *last_tip, config.ANIMATION_DOT_RADIUS,
+                      config.ANIMATION_DOT_BLUR, dot_brightness, alpha=1 - (i + 1) / fade_frames)
+            scene.write(pipe, frame)
+            frame_count += 1
+        if hold_frames or final_stats_frame:
+            scene.write(pipe, completed_frame)
+            frame_count += 1
+            # Credits are already composited; reuse bytes without painting twice.
+            hold_bytes = completed_frame.tobytes()
+            for _ in range(hold_frames - 1):
+                pipe.write(hold_bytes)
+                frame_count += 1
+    print(f"Done. {frame_count} frames → {output_path}")
+
+
+def run_parallel_animation(runs, output_path, config):
+    """Draw all routes at a common pixel speed with additive per-run coverage."""
+    scene = _AnimationScene(runs, config, "parallel")
+    fps = config.ANIMATION_FPS
+    drawing_frames = int(config.ANIMATION_PARALLEL_DURATION_S * fps)
+    hold_frames = int(config.ANIMATION_PARALLEL_HOLD_S * fps)
+    speed = max(route["length"] for route in scene.routes) / drawing_frames
+    miles = scene.mile_totals[-1]
+    date = (f'{_format_year(scene.runs[0]["start_date"])} – '
+            f'{_format_year(scene.runs[-1]["start_date"])}')
+    total_frames = 1 + drawing_frames + hold_frames
+    print(f"Expected duration: {total_frames / fps:.2f}s ({total_frames} frames at {fps}fps).")
+    print(f"Rendering {len(scene.runs)} runs in parallel → {output_path}")
+    tracer_radius = max(1, config.ANIMATION_DOT_RADIUS // 2)
+    with _video_pipe(output_path, scene.width, scene.height, fps) as pipe:
+        scene.write(pipe, scene.frame())
+        for index in range(drawing_frames):
+            tips = []
+            for route in scene.routes:
+                if route.get("done"):
+                    continue
+                points = route["points"]
+                seg, t, drawn = advance_cursor(
+                    points, route.get("seg", 0), route.get("t", 0.0), speed or 1.0,
+                )
+                # The fixed schedule must always include the exact final endpoint.
+                if index == drawing_frames - 1:
+                    seg, t = len(points) - 2, 1.0
+                done = seg == len(points) - 2 and t == 1.0
+                route["pixels"].reveal(scene.canvas, (index + 1) * speed, complete=done)
                 if drawn:
-                    tips.append(drawn[-1][1])
-                state["seg"] = new_seg
-                state["t"] = new_t
-                if new_seg >= len(px_coords) - 2 and new_t >= 1.0:
-                    state["done"] = True
-
-            accumulation += buf
-            frame_rgb = _build_frame()
-            paint_dots_batch(frame_rgb, tips, tracer_radius, tracer_blur)
-            proc.stdin.write(frame_rgb.tobytes())
-
-        # ── Hold frames: text fades in ────────────────────────────────────────
-        if hold_frames > 0:
-            print(f"Writing {hold_frames} hold frames with text fade-in...")
-            frame_no_text = _build_frame().astype(np.float32)
-
-            pil_with_text = Image.fromarray(frame_no_text.astype(np.uint8), mode="RGB")
-            pil_with_text = render_animation_typography(
-                pil_with_text, date_range_str, len(valid_runs), int(total_miles),
-                MAP_FONT_PATH, scale=TYPOGRAPHY_SCALE,
-            )
-            frame_with_text = np.array(pil_with_text, dtype=np.float32)
-
-            for i in range(hold_frames):
-                alpha = i / max(hold_frames - 1, 1)
-                blended = frame_no_text * (1 - alpha) + frame_with_text * alpha
-                proc.stdin.write(np.clip(blended, 0, 255).astype(np.uint8).tobytes())
-
-    finally:
-        proc.stdin.close()
-        proc.wait()
-
-    print(f"Done. {drawing_frames + hold_frames} frames → {output_path}")
+                    tips.append(points[-1] if done else drawn[-1][1])
+                route.update(seg=seg, t=t, done=done)
+            frame = scene.frame()
+            paint_dots_batch(frame, tips, tracer_radius, 0)
+            if not hold_frames and index == drawing_frames - 1:
+                frame = scene.stats(frame, date, len(scene.runs), miles)
+            scene.write(pipe, frame)
+        if hold_frames:
+            no_text = scene.frame()
+            with_text = scene.stats(no_text.copy(), date, len(scene.runs), miles)
+            for index in range(hold_frames):
+                alpha = 1.0 if hold_frames == 1 else index / (hold_frames - 1)
+                frame = (no_text * (1 - alpha) + with_text * alpha).astype(np.uint8)
+                scene.write(pipe, frame)
+    print(f"Done. {total_frames} frames → {output_path}")

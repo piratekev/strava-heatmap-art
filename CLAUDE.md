@@ -23,7 +23,7 @@ render.py        → orchestrates everything (--config sf|nyc selects city)
 ```
 animate.py       → orchestrates animation (--config, --preview, --fetch, --output)
   src/animator.py  → cursor advance, canvas accumulation, dot rendering, ffmpeg pipe
-  src/renderer.py  → pre-pass rasterization + projection (reused)
+  src/renderer.py  → projection (reused); animation builds its own per-run coverage
   src/tiles.py     → map tile (reused)
   src/typography.py → font loader + legend (live stats live in src/animator.py)
 ```
@@ -130,7 +130,7 @@ built-in NYC preset. Other north-up cities require an even-pixel
 - Tile composition resamples overlapping row bands with Lanczos context rather than allocating a citywide native-resolution mosaic. Cache identity includes output size because cached basemaps are already resampled. Never disable Pillow's decompression-bomb protections to accommodate zoom-17 maps.
 - A shared HTTP session reuses tile connections. Transient failures retry with backoff/Retry-After, and source tiles are cached under `data/map_tiles/` so interrupted downloads resume. Composed caches are replaced atomically.
 - CARTO can return an HTTP-200 API-key placeholder; reject the observed error image on download and per-tile cache reads. Fresh downloads may require an authenticated `MAP_TILE_URL`; never treat a successful HTTP status alone as proof of a valid basemap.
-- `MAP_ATTRIBUTION` — visible poster credit, also stored in PNG copyright metadata. Animation output does not yet use it. Update it when changing providers. Default: `© OpenStreetMap contributors, © CARTO`.
+- `MAP_ATTRIBUTION` — visible poster/video credit, also stored in PNG/MP4 copyright metadata. Animation applies it last on every frame, including openings and fades. Update it when changing providers. Default: `© OpenStreetMap contributors, © CARTO`.
 - `MAP_TILE_OPACITY` — how much the street grid shows through (0 = invisible, 1 = full).
 
 ### Animation
@@ -140,7 +140,7 @@ built-in NYC preset. Other north-up cities require an even-pixel
 - `ANIMATION_SPEED_RAMP_RUNS` — number of runs over which speed linearly ramps from slow → fast after run 1 (and back before the last run).
 - `ANIMATION_DOT_RADIUS` — cursor dot radius in pixels at `ANIMATION_OUTPUT_RESOLUTION`.
 - `ANIMATION_DOT_BLUR` — Gaussian sigma for the dot halo. 0 = hard edge.
-- `ANIMATION_DOT_BRIGHTNESS` — intended sequential dot brightness; `AnimConfig` currently omits it, so the CLI uses the animator's fallback of 1.0.
+- `ANIMATION_DOT_BRIGHTNESS` — sequential dot brightness (default 2.0), preserved by the CLI's effective config.
 - `ANIMATION_HOLD_SECONDS` — seconds to hold on the final completed frame after the dot fades out.
 - `ANIMATION_OUTPUT_RESOLUTION` — `(width, height)` of the MP4. Default `(1080, 1350)` = Instagram 4:5 portrait. `--preview` halves and rounds down to even dimensions, `(540, 674)`.
 - `ANIMATION_PARALLEL_DURATION_S` — drawing duration for the longest route (15s); shorter routes finish sooner at the same pixel speed.
@@ -176,22 +176,39 @@ system encoder/probe tools are absent.
 **Garmin source** (`src/garmin.py`): `FETCH_SOURCE = "garmin"` (or `garmin_fetch.py`) pulls runs since the latest cached activity via the `garminconnect` library, or from 1970-01-01 for a missing/empty cache. `--since` overrides the start date for backfills. It converts activities to the subset of the Strava schema the pipeline reads (`sport_type`, `map.summary_polyline`, `distance`, `start_date`, …), tagged `source: "garmin"`. Dedupe is by Garmin ID (Strava's `external_id` is `garmin_ping_<id>`) or start time within 60 s. A later Strava fetch replaces Garmin entries with matching `external_id`. Login tokens live in `~/.garminconnect`; first login needs `GARMIN_EMAIL`/`GARMIN_PASSWORD` (prompt or `.env`) and MFA — without a TTY, run `garmin_fetch.py` once, then `garmin_fetch.py --mfa <code>` with the same `--since` if supplied.
 
 **Animation normalization** (`src/animator.py`): a pre-pass rasterizes all runs
-to compute `final_log_max = log1p(full_canvas).max()`. Frames use this fixed
-anchor. The animation separately rasterizes segments and applies its own scaled
-density-expand/hot-bloom passes. It does not reuse the poster's full effects
-pipeline, and equal final accumulation / pixel-identical poster output must not
-be assumed. Parallel mode uses a shared per-frame buffer for all routes.
+at animation-scaled base thickness, without poster bonus strokes. Each run
+contributes the union of its full OpenCV strokes once. Sparse pixel indices
+are sorted by first path distance, then revealed monotonically in either mode.
+Different runs add visits, even at coincident pixels. The same coverage computes
+`final_log_max = log1p(full_canvas).max()`, independent of frame boundaries,
+drawing speed, or FPS. Both modes share scene preparation and compositing;
+neither promises the poster's full effects or pixel-identical poster output.
 
 **Animation cursor**: `advance_cursor()` moves a cursor along pixel-space polylines by a pixel budget per frame, returning drawn sub-segments for rasterization and the new cursor position for dot placement. The last run decelerates over the final `out_w // 4` pixels (linear ramp to 1 px/frame), then the dot fades over 0.5 s before the hold frames begin.
 
-**Animation integration boundaries:** `animate.py --fetch` still calls Strava
-directly instead of `fetch_from_source(FETCH_SOURCE)`. Maps are mandatory, fixed
-at zoom 15, and currently omit video attribution. Sequential stats use traced
-Haversine mileage; parallel final stats use cached activity distance. The CLI
-does not create custom output parents; ffmpeg is an external system dependency.
-See [animation status](docs/animation-status.md) for validated merge-readiness
-gaps. The files in `docs/superpowers/` are historical design/planning records,
-not current operating instructions.
+**Animation lifecycle:** the CLI preserves all active config values, validates
+before fetching/loading assets, and dispatches `--fetch` through
+`fetch_from_source(FETCH_SOURCE)`. It creates custom output parents. Encoding uses
+a temporary sibling MP4, checks ffmpeg's status and nonempty output, and replaces
+the destination atomically. Failures/cancellation terminate and reap the encoder,
+including cancellation during finalization. Sequential duration counts use the
+same traversal generator as rendering, including ramps/deceleration and every
+opening/fade/hold frame; parallel counts include the opening frame.
+
+**Animation statistics:** both modes use one chronological prefix sum of cached
+activity distances and floor the same final mileage. Sequential progress
+apportions each run's cached distance by its projected route progress, assigning
+the full cached value on completion. Short/collapsed routes still count toward
+final distance, run count, and date range. Do not compute mileage from the GPS
+polyline independently. The scene loads its stats font once, and sequential
+fade/hold frames reuse the completed background; already-credited hold bytes
+must not be credited repeatedly.
+
+**Animation integration boundaries:** maps remain mandatory and fixed at zoom
+15; rotated/intermediate-crop configurations are unsupported. ffmpeg is an
+external system dependency. See [animation status](docs/animation-status.md) for
+completed fixes, test coverage, and remaining validation limits. The files in `docs/superpowers/`
+are historical design/planning records, not current operating instructions.
 
 **Token refresh** (`src/fetcher.py:_update_env_tokens`): when the access token expires mid-fetch, `StravaClient.refresh_access_token()` POSTs to Strava and writes the new tokens back to `.env` in-place. It only updates existing lines — auth.py must have written them first.
 

@@ -86,7 +86,7 @@ def render_typography(img, sf_runs, font_path,
 
 
 def render_attribution(img, text, font_path):
-    """Keep basemap credits legible on the final, cropped print."""
+    """Keep basemap credits visible on prints and smaller video frames."""
     draw = ImageDraw.Draw(img)
     w, h = img.size
     margin = max(4, h // 100)
@@ -95,8 +95,27 @@ def render_attribution(img, text, font_path):
     while size > 6 and draw.textbbox((0, 0), text, font=font)[2] > w - 2 * margin:
         size -= 1
         font = _load_font(font_path, size)
-    draw.text((margin, h - margin), text, font=font, anchor="ls",
-              fill=(255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0))
+    lines = []
+    line = ""
+    for word in text.split():
+        candidate = f"{line} {word}".strip()
+        if line and draw.textbbox((0, 0), candidate, font=font)[2] > w - 2 * margin:
+            lines.append(line)
+            line = ""
+        while len(word) > 1 and draw.textbbox((0, 0), word, font=font)[2] > w - 2 * margin:
+            cut = len(word) - 1
+            while cut > 1 and draw.textbbox((0, 0), word[:cut], font=font)[2] > w - 2 * margin:
+                cut -= 1
+            lines.append(word[:cut])
+            word = word[cut:]
+        line = f"{line} {word}".strip()
+    if line:
+        lines.append(line)
+    line_height = size + 3
+    for index, line in enumerate(lines):
+        y = h - margin - (len(lines) - index - 1) * line_height
+        draw.text((margin, y), line, font=font, anchor="ls",
+                  fill=(255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0))
     return img
 
 

@@ -16,6 +16,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from types import SimpleNamespace
 from dotenv import load_dotenv
 
 # ── Config injection (same pattern as render.py) ──────────────────────────────
@@ -28,14 +29,14 @@ if _pre_args.config != "sf":
 # ─────────────────────────────────────────────────────────────────────────────
 
 import config as _cfg
-from src.fetcher import StravaClient, fetch_activities
+from src.sources import fetch_from_source
 from src.processor import filter_sf_runs, decode_runs
-from src.animator import run_animation, run_parallel_animation
+from src.animator import run_animation, run_parallel_animation, validate_animation_config
 from config import OUTPUT_DIR
 
 
 def main():
-    load_dotenv()
+    load_dotenv(".env")
     parser = argparse.ArgumentParser(description="Generate Strava animation")
     parser.add_argument("--config", default="sf")
     parser.add_argument("--mode", choices=["sequential", "parallel"], default="sequential")
@@ -45,43 +46,45 @@ def main():
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
 
-    if args.fetch:
-        print("Fetching activities from Strava...")
-        try:
-            client = StravaClient.from_env()
-        except KeyError as e:
-            print(f"ERROR: Missing token {e} in .env")
-            print("Run 'python auth.py' first to authenticate.")
-            sys.exit(1)
-        fetch_activities(client)
-
-    with open("data/activities.json") as f:
-        activities = json.load(f)
-
-    city_runs = filter_sf_runs(activities)
-    runs = decode_runs(city_runs)
-    print(f"Found {len(runs)} runs.")
-
-    # Build an effective config object for preview overrides
-    class AnimConfig:
-        ANIMATION_FPS = _cfg.ANIMATION_FPS
-        ANIMATION_DRAWING_SPEED = _cfg.ANIMATION_DRAWING_SPEED
-        ANIMATION_DRAWING_SPEED_SLOW = _cfg.ANIMATION_DRAWING_SPEED_SLOW
-        ANIMATION_SPEED_RAMP_RUNS = _cfg.ANIMATION_SPEED_RAMP_RUNS
-        ANIMATION_DOT_RADIUS = _cfg.ANIMATION_DOT_RADIUS
-        ANIMATION_DOT_BLUR = _cfg.ANIMATION_DOT_BLUR
-        ANIMATION_HOLD_SECONDS = _cfg.ANIMATION_HOLD_SECONDS
-        ANIMATION_OUTPUT_RESOLUTION = _cfg.ANIMATION_OUTPUT_RESOLUTION
-        ANIMATION_PARALLEL_DURATION_S = _cfg.ANIMATION_PARALLEL_DURATION_S
-        ANIMATION_PARALLEL_HOLD_S = _cfg.ANIMATION_PARALLEL_HOLD_S
+    # Preserve all active settings; preview overrides only its documented knobs.
+    anim_config = SimpleNamespace(**{k: v for k, v in vars(_cfg).items() if k.isupper()})
+    try:
+        validate_animation_config(anim_config, args.mode)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.preview:
         w, h = _cfg.ANIMATION_OUTPUT_RESOLUTION
         # yuv420p requires dimensions divisible by 2 — floor to nearest even
-        AnimConfig.ANIMATION_OUTPUT_RESOLUTION = (w // 2 & ~1, h // 2 & ~1)
-        AnimConfig.ANIMATION_HOLD_SECONDS = 0
-        AnimConfig.ANIMATION_PARALLEL_HOLD_S = 1  # keep text fade visible in preview
-        print(f"Preview mode: {AnimConfig.ANIMATION_OUTPUT_RESOLUTION[0]}x{AnimConfig.ANIMATION_OUTPUT_RESOLUTION[1]}")
+        anim_config.ANIMATION_OUTPUT_RESOLUTION = (w // 2 & ~1, h // 2 & ~1)
+        anim_config.ANIMATION_HOLD_SECONDS = 0
+        anim_config.ANIMATION_PARALLEL_HOLD_S = 1
+        print(f"Preview mode: {anim_config.ANIMATION_OUTPUT_RESOLUTION[0]}x{anim_config.ANIMATION_OUTPUT_RESOLUTION[1]}")
+
+    try:
+        validate_animation_config(anim_config, args.mode)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    if args.fetch:
+        fetch_from_source(_cfg.FETCH_SOURCE)
+
+    try:
+        with open("data/activities.json") as f:
+            activities = json.load(f)
+    except FileNotFoundError:
+        parser.error("No cached activities. Run 'python animate.py --fetch' first.")
+    except (OSError, ValueError):
+        parser.error("Cannot read data/activities.json. Restore it or run with --fetch.")
+    if not isinstance(activities, list):
+        parser.error("data/activities.json must contain an activity list. Run with --fetch.")
+
+    city_runs = filter_sf_runs(activities)
+    if not city_runs:
+        parser.error("No running activities with GPS match this city's bounds. "
+                     "Check --config and CITY_BOUNDS, or run with --fetch.")
+    runs = decode_runs(city_runs)
+    print(f"Found {len(runs)} runs.")
 
     if args.output:
         out_path = args.output
@@ -93,10 +96,15 @@ def main():
         preview_tag = "-preview" if args.preview else ""
         out_path = os.path.join(OUTPUT_DIR, f"animation{config_tag}{mode_tag}{preview_tag}-{ts}.mp4")
 
-    if args.mode == "parallel":
-        run_parallel_animation(runs, out_path, AnimConfig)
-    else:
-        run_animation(runs, out_path, AnimConfig)
+    try:
+        if args.mode == "parallel":
+            run_parallel_animation(runs, out_path, anim_config)
+        else:
+            run_animation(runs, out_path, anim_config)
+    except (OSError, RuntimeError, ValueError) as exc:
+        parser.exit(1, f"ERROR: {exc}\n")
+    except KeyboardInterrupt:
+        parser.exit(130, "Animation cancelled.\n")
 
 
 if __name__ == "__main__":
