@@ -68,9 +68,9 @@ def write_cache(workspace, activities):
     (workspace / "data" / "activities.json").write_text(json.dumps(activities))
 
 
-def run_export(workspace, *args):
+def run_export(workspace, *args, entry=EXPORT):
     env = dict(os.environ, PYTHON_DOTENV_DISABLED="1", HOME=str(workspace))
-    return subprocess.run([sys.executable, "-c", BOOTSTRAP, str(EXPORT), *args],
+    return subprocess.run([sys.executable, "-c", BOOTSTRAP, str(entry), *args],
                           cwd=workspace, env=env, text=True, capture_output=True, timeout=30)
 
 
@@ -89,13 +89,14 @@ def write_small_config(workspace, city="sf"):
 
 
 @pytest.mark.parametrize("city,size", [("sf", (472, 590)), ("nyc", (174, 500))])
-def test_preset_preview_cli_loads_real_city_configuration(tmp_path, city, size):
+@pytest.mark.parametrize("entry", [EXPORT, ROOT / "render.py"])
+def test_preset_preview_cli_loads_real_city_configuration(tmp_path, city, size, entry):
     write_cache(tmp_path, [activity(city)])
     output = tmp_path / "new-directory" / "poster.png"
     args = ["--preview", "--output", str(output)]
     if city != "sf":
         args += ["--config", city]
-    result = run_export(tmp_path, *args)
+    result = run_export(tmp_path, *args, entry=entry)
     assert result.returncode == 0, result.stdout + result.stderr
     with Image.open(output) as img:
         assert img.size == size

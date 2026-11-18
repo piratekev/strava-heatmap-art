@@ -457,3 +457,22 @@ def test_attribution_is_visible_and_fits_final_canvas(tmp_path, width, height):
     left, top, right, bottom = draw.textbbox(args[0], args[1], font=kwargs["font"], anchor=kwargs["anchor"])
     assert 0 <= left < right <= width
     assert 0 <= top < bottom <= height
+
+
+@pytest.mark.parametrize("width,height", [(40, 50), (64, 80), (80, 100)])
+def test_attribution_wraps_complete_credit_on_small_video_frames(tmp_path, width, height):
+    from config import MAP_ATTRIBUTION
+    image = Image.new("RGBA", (width, height))
+    with patch("PIL.ImageDraw.ImageDraw.text") as text:
+        render_attribution(image, MAP_ATTRIBUTION, str(tmp_path / "missing.ttf"))
+    labels = [call.args[1] for call in text.call_args_list]
+    assert "".join(labels).replace(" ", "") == MAP_ATTRIBUTION.replace(" ", "")
+    assert len(labels) > 1
+    draw = ImageDraw.Draw(image)
+    for call in text.call_args_list:
+        args, kwargs = call
+        left, top, right, bottom = draw.textbbox(
+            args[0], args[1], font=kwargs["font"], anchor=kwargs["anchor"],
+        )
+        assert 0 <= left < right <= width
+        assert 0 <= top < bottom <= height
